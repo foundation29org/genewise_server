@@ -9,7 +9,6 @@ const translationCtrl = require('../services/translation')
 const openAIserviceCtrl = require('../services/openai')
 const bookServiceCtrl2 = require('../services/books')
 const docsCtrl = require('../controllers/user/patient/documents')
-const taCtrl = require('../services/ta')
 const cors = require('cors');
 const serviceEmail = require('../services/email')
 
@@ -82,9 +81,6 @@ api.post('/translationinvert', corsWithOptions, checkApiKey, translationCtrl.get
 api.post('/translationinvertarray', corsWithOptions, checkApiKey, translationCtrl.getTranslationDictionaryInvert2)
 api.post('/deepltranslationinvert', corsWithOptions, checkApiKey, translationCtrl.getdeeplTranslationDictionaryInvert)
 api.post('/translation/segments', corsWithOptions, checkApiKey, translationCtrl.getTranslationSegments)
-
-//ta
-api.post('/callTextAnalytics', corsWithOptions, checkApiKey, taCtrl.callTextAnalytics)
 
 
 

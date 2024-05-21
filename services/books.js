@@ -1,10 +1,8 @@
 'use strict'
 const config = require('./../config')
-const crypt = require('../services/crypt')
 const axios = require('axios');
 const langchain = require('../services/langchain')
 const f29azureService = require("../services/f29azure")
-const insights = require('../services/insights')
 const countTokens = require( '@anthropic-ai/tokenizer'); 
 const {
 	SearchClient,
@@ -13,11 +11,7 @@ const {
 	odata,
   } = require("@azure/search-documents");  
 const sas = config.BLOB.SAS;
-const endpoint = config.SEARCH_API_ENDPOINT;
-const apiKey = config.SEARCH_API_KEY;
 const accountname = config.BLOB.NAMEBLOB;
-const Document = require('../models/document')
-const Patient = require('../models/patient');
 const form_recognizer_key = config.FORM_RECOGNIZER_KEY
 const form_recognizer_endpoint = config.FORM_RECOGNIZER_ENDPOINT
 
@@ -102,12 +96,7 @@ async function callSummary(req, res) {
 
 	res.status(200).send(finalResult);
 	}
-// 	)
-// 		.catch(error => {
-// 			console.error(error);
-// 			res.status(500).send({ message: error })
-// 		});
-// }
+
 
 async function azureFuncSummary(req, prompt, timeline=false){
     return new Promise(async function (resolve, reject) {
@@ -185,178 +174,8 @@ async function form_recognizer(userId, documentId, containerName, url) {
 	);
   }
 
-async function anonymizeBooks(documents) {
-	return new Promise(async function (resolve, reject) {
-		const promises = [];
-		for (let i = 0; i < documents.length; i++) {
-			let document = documents[i];
-			promises.push(anonymizeDocument(document));
-		}
-		Promise.all(promises)
-			.then((data) => {
-				resolve(data);
-			})
-			.catch((err) => {
-				insights.error(err);
-				respu.message = err;
-				resolve(respu);
-			});
-	});
-
-}
-
-async function anonymizeDocument(document) {
-	return new Promise(async function (resolve, reject) {
-		if (document.anonymized == 'false') {
-			let userId = await getUserId(document.createdBy);
-			if (userId != null) {
-				userId = crypt.encrypt(userId.toString());
-				let patientId = document.createdBy.toString();
-				let idencrypt = crypt.encrypt(patientId);
-				let containerName = (idencrypt).substr(1);
-				let filename = document.url.split("/").pop();
-				setStateAnonymizedDoc(document._id, 'inProcess')
-				let docId = document._id.toString();
-				let anonymized = await langchain.anonymize(patientId, containerName, document.url, docId, filename, userId);
-				if (anonymized) {
-					setStateAnonymizedDoc(document._id, 'true')
-				} else {
-					setStateAnonymizedDoc(document._id, 'false')
-				}
-				resolve(true);
-			}
-		}else{
-			resolve(true);
-		}
-	});
-
-}
-
-function setStateAnonymizedDoc(documentId, state) {
-	console.log(documentId)
-	Document.findByIdAndUpdate(documentId, { anonymized: state }, { new: true }, (err, documentUpdated) => {
-		if (err){
-			insights.error(err);
-			console.log(err)
-		}
-		if (!documentUpdated){
-			insights.error('Error updating document');
-			console.log('Error updating document')
-		}
-	})
-}
-
-async function getUserId(patientId) {
-	return new Promise(async function (resolve, reject) {
-		Patient.findById(patientId, { "_id": false }, (err, patient) => {
-			if (err){
-				insights.error(err);
-				console.log(err)
-				resolve(null)
-			} 
-			if (patient) {
-				resolve(patient.createdBy);
-			} else {
-				insights.error('No patient found');
-				console.log('No patient found')
-				resolve(null)
-			}
-		})
-	});
-}
-
-async function deleteBook(patientId, documentId) {
-	return new Promise(async function (resolve, reject) {
-		Document.find({ "createdBy": patientId }, { "createdBy": false }, async (err, eventsdb) => {
-			if (err){
-				insights.error(err);
-				return res.status(500).send({ message: `Error making the request: ${err}` })
-			} 
-			if (!eventsdb) {
-				try {
-					await deleteIndexAzure(patientId)
-					await deleteIndexAzure('convmemory'+patientId)
-					resolve(true);
-				} catch (error) {
-					insights.error(error);
-					resolve(false);
-				}
-
-			} else {
-				if (eventsdb.length == 1) {
-					try {
-						await deleteIndexAzure(patientId)
-						await deleteIndexAzure('convmemory'+patientId)
-						resolve(true);
-					} catch (error) {
-						insights.error(error);
-						resolve(false);
-					}
-
-				} else {
-					try {
-						await deleteDocumentAzure(patientId, documentId)
-						resolve(true);
-					} catch (error) {
-						insights.error(error);
-						resolve(false);
-					}
-				}
-
-			}
-		});
-
-	});
-}
-
-async function deleteIndexAzure(indexName){
-    return new Promise(async function (resolve, reject) {
-        const searchClient = new SearchIndexClient(endpoint, new AzureKeyCredential(apiKey));
-        const indexResult = await searchClient.listIndexes();
-        let currentIndex = await indexResult.next();
-        
-        while (!currentIndex.done) {
-            if (currentIndex.value.name === String(indexName)) {
-                try {
-                    await searchClient.deleteIndex(String(indexName));
-                    resolve(true);
-                    return;
-                } catch (error) {
-					console.log(`Error deleting index ${indexName}:`, error);
-                    reject(error);
-                    return;
-                }
-            }
-            currentIndex = await indexResult.next();
-        }
-
-        console.log(`El índice ${indexName} no existe.`);
-        resolve(false);
-    });
-}
-
-async function deleteDocumentAzure(patientId, documentId){
-	// To query and manipulate documents
-	const indexClient = new SearchClient(endpoint, String(patientId), new AzureKeyCredential(apiKey),);
-	// Define the search options
-	const searchResult = await indexClient.search("*", {
-		filter: `doc_id eq '${documentId}'`,
-	});
-	// Get all the ids of the documents to batch delete them
-	let documentIdsToDelete = [];
-	for await (const result of searchResult.results) {
-		documentIdsToDelete.push(result.document.id);
-	  }
-	// Batch delete the documents
-	const deleteResult = await indexClient.deleteDocuments("id", documentIdsToDelete);
-}
-
-
 module.exports = {
 	callNavigator,
 	callSummary,
 	form_recognizer,
-	anonymizeBooks,
-	deleteBook,
-	anonymizeDocument,
 }

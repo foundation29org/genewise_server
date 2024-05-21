@@ -24,7 +24,6 @@
     "@azure/openai": "^1.0.0-beta.4",
     "@azure/search-documents": "^12.0.0-beta.2",
     "@azure/storage-blob": "^12.2.0-preview.1",
-    "@azure/web-pubsub": "^1.1.1",
     "@iamtraction/google-translate": "^1.1.2",
     "@smithy/eventstream-codec": "^2.0.9",
     "@smithy/protocol-http": "^3.0.5",
