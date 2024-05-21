@@ -6,7 +6,6 @@ const configuration = new Configuration({
   apiKey: config.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
-const crypt = require('../services/crypt')
 const langchain = require('../services/langchain')
 
 const endpoint = config.AZURE_OPENAI_ENDPOINT;
