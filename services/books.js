@@ -40,11 +40,12 @@ async function callSummary(req, res) {
 		and any other relevant information in an easy-to-understand "Other" category.`;
 	} else if (req.body.role == 'adult') {
 		prompt = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
-		The explanation should include essential information about genetic variants, their implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
-		Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
-		Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
-		followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their effects, associated conditions, etc.,
-		and include any relevant additional information in the "Other" category.`;
+    The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
+    Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
+    Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
+    followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
+    and include any relevant additional information in the "Other" category.
+    Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.`;
 	}
 
 	let prompt2 = `Please create a JSON timeline from the patient's genetic information and individual events, with keys for 'date', 'eventType', and 'keyGeneticEvent'.
