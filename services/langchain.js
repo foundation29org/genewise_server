@@ -96,6 +96,52 @@ function createModels(projectName) {
   return { azuregpt4, azure32k, claude2, model128k, azure128k, azuregpt4o };
 }
 
+function extractAndParse(summaryText) {
+  // Step 1: Extract Text using Regular Expressions
+  const matches = summaryText.match(/<output>(.*?)<\/output>/s);
+  if (!matches) {
+    console.warn("No matches found in <output> tags.");
+    return "[]";
+  }
+
+  // Assuming the content in <output> is JSON
+  try {
+    // Step 2: Convert Extracted Text to JSON
+    const extractedJson = JSON.parse(matches[1]);  // Considering only the first match
+    return JSON.stringify(extractedJson);
+  } catch (error) {
+    console.warn("Invalid JSON format in <output> tags.");
+    return "Invalid JSON format";
+  }
+}
+
+function extractAndParseGene(summaryText) {
+  // Step 1: Extract Text using Regular Expressions
+  const matchHtml = summaryText.match(/<html>(.*?)<\/html>/s);
+  const matches = summaryText.match(/<output>(.*?)<\/output>/s);
+  if (!matchHtml) {
+    console.warn("No matches found in <html> tags.");
+    return "[]";
+  }
+
+  if (!matches) {
+    console.warn("No matches found in <output> tags.");
+    return "[]";
+  }
+
+  // Assuming the content in <output> is JSON
+  try {
+    // Step 2: Convert Extracted Text to JSON
+    const extractedHtml = matchHtml[1];  // Considering only the first match
+    const extractedJson = JSON.parse(matches[1]);  // Considering only the first match
+    return [extractedHtml, JSON.stringify(extractedJson)];
+  } catch (error) {
+    console.warn("Invalid JSON format in <output> tags.");
+    return "Invalid JSON format";
+  }
+}
+
+
 // This function will be a basic conversation with documents (context)
 async function navigator_chat(userId, question, conversation, context){
   return new Promise(async function (resolve, reject) {
@@ -352,6 +398,11 @@ async function navigator_summarize(userId, question, context, timeline, gene){
       }
 
       console.log(response);
+
+      if (timeline) {
+        response.text = extractAndParse(response.text);
+      }
+
       resolve(response);
     } catch (error) {
       console.log("Error happened: ", error)
