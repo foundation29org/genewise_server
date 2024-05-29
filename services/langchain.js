@@ -911,11 +911,82 @@ async function combine_categorized_docs(userId, context){
   });
 }
 
+async function translateSummary(lang, text) {
+  return new Promise(async function (resolve, reject) {
+    try {
+      // Create the models
+      const projectName = `TRANSLATE - ${config.LANGSMITH_PROJECT}`;
+      let { azure128k } = createModels(projectName); // Ajusta esto si necesitas otros modelos
+
+      // Format and call the prompt
+      const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
+        `You are an expert translator. Your task is to translate the given text into the specified language.`
+      );
+
+      const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
+        `Translate the following text into {input_language}:
+        <text>
+        {input_text}
+        </text>
+
+        The translation should be clear, accurate, and patient-friendly. Avoid unnecessary medical jargon and ensure the translation is understandable for patients and their families.
+
+        Example of desired HTML format (this is just a formatting example, not related to the input):
+        
+        <output example>
+        <div><h3>Example Title</h3><p>This is a placeholder paragraph summarizing the key points. It should be concise and clear.</p></div>
+        </output example>`
+      );
+
+      const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
+
+      const chain = new LLMChain({
+        prompt: chatPrompt,
+        llm: azure128k,
+      });
+
+      const chain_retry = chain.withRetry({
+        stopAfterAttempt: 3,
+      });
+
+      let response;
+      try {
+        response = await chain_retry.invoke({
+          input_language: lang,
+          input_text: text,
+        });
+      } catch (error) {
+        if (error.message.includes('Error 429')) {
+          console.log("Rate limit exceeded, waiting and retrying...");
+          await new Promise(resolve => setTimeout(resolve, 20000)); // Wait for 20 seconds
+          response = await chain_retry.invoke({
+            input_language: lang,
+            input_text: text,
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      resolve(response);
+    } catch (error) {
+      console.log("Error happened: ", error)
+      insights.error(error);
+      var respu = {
+        "msg": error,
+        "status": 500
+      }
+      resolve(respu);
+    }
+  });
+}
+
 module.exports = {
   navigator_chat,
   navigator_summarize,
   navigator_summarizeTranscript,
   navigator_summarize_dx,
   categorize_docs,
-  combine_categorized_docs
+  combine_categorized_docs,
+  translateSummary
 };

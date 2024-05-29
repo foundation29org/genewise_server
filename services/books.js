@@ -39,13 +39,32 @@ async function callSummary(req, res) {
 		followed by a friendly introduction of the patient, a simplified breakdown of genetic information into categories like important variants and their effects,
 		and any other relevant information in an easy-to-understand "Other" category.`;
 	} else if (req.body.role == 'adult') {
-		prompt = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
+		let promptinic = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
     The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
     Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
     Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
     followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
     and include any relevant additional information in the "Other" category.
     Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.`;
+
+	prompt = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
+    The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
+    Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
+    Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
+    followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
+    and include any relevant additional information in the "Other" category.
+    Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.
+	If there are no pathogenic variants, explain that this does not rule out the possibility of a genetic condition.
+
+	Aditionally you will provide an JSON output with some boolean values and categorizations to modify the explanation if needed.
+	
+	In the JSON:
+	Returns the type of genetic technique used: <WGS, Exome, Panel>.
+	Returns the presence of pathogenic variants: <true, false>.
+	Returns what is the genetic heritage: <autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance>.
+	Returns if we need a confirmation with paternal tests: <true, false>.
+
+	`;
 	}
 
 	let prompt2 = `Please create a JSON timeline from the patient's genetic information and individual events, with keys for 'date', 'eventType', and 'keyGeneticEvent'.
@@ -53,10 +72,10 @@ async function callSummary(req, res) {
 	The timeline should be structured as a list of events, with each individual event containing a date, type, and a small description of the event.`;
 
 	// var result = await langchain.navigator_summarize(req.body.userId, promt, req.body.conversation, req.body.context);
-	let timeline = true;
+
 	let promises = [
-		azureFuncSummary(req, prompt),
-		azureFuncSummary(req, prompt2, timeline)
+		azureFuncSummary(req, prompt, false, true),
+		azureFuncSummary(req, prompt2, true, false)
 	];
 	
 	// Utilizar Promise.all para esperar a que todas las promesas se resuelvan
@@ -99,14 +118,15 @@ async function callSummary(req, res) {
 	}
 
 
-async function azureFuncSummary(req, prompt, timeline=false){
+async function azureFuncSummary(req, prompt, timeline, gene){
     return new Promise(async function (resolve, reject) {
         const functionUrl = config.AF29URL + `/api/HttpTriggerSummarizer?code=${config.functionKey}`;
         axios.post(functionUrl, req.body.context, {
             params: {
                 prompt: prompt,
                 userId: req.body.userId,
-				timeline: timeline
+				timeline: timeline,
+				gene: gene
             },
             headers: {
                 'Content-Type': 'application/json'
@@ -153,12 +173,12 @@ async function form_recognizer(userId, documentId, containerName, url) {
 			// console.log(resultResponse.data.error.details);
 			let content = resultResponse.data.analyzeResult.content;
 
-			const category_summary = await langchain.categorize_docs(userId, content);
+			//const category_summary = await langchain.categorize_docs(userId, content);
 	
 			var response = {
 			"msg": "done", 
 			"data": content,
-			"summary": category_summary,
+			"summary": content,
 			"doc_id": documentId, 
 			"status": 200
 			}
