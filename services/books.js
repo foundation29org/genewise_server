@@ -74,12 +74,17 @@ async function callSummary(req, res) {
 	// var result = await langchain.navigator_summarize(req.body.userId, promt, req.body.conversation, req.body.context);
 
 	let promises = [
-		azureFuncSummary(req, prompt, false, true),
-		azureFuncSummary(req, prompt2, true, false)
+		langchain.navigator_summarize(req.body.userId, prompt, req.body.context, false, true),
+		langchain.navigator_summarize(req.body.userId, prompt2, req.body.context, true, false)
 	];
 	
 	// Utilizar Promise.all para esperar a que todas las promesas se resuelvan
 	let [result, result2] = await Promise.all(promises);
+
+	console.log("Resultado 1");
+	console.log(result);
+	console.log("Resultado 2");
+	console.log(result2);
 
 	if(result.data){
 		let data = {
@@ -88,7 +93,7 @@ async function callSummary(req, res) {
 			role: req.body.role,
 			conversation: req.body.conversation,
 			context: req.body.context,
-			result: result.data
+			result: result.text
 		}
 		let nameurl = req.body.paramForm+'/summary.json';
 		f29azureService.createBlobSimple('data', nameurl, data);
@@ -101,7 +106,7 @@ async function callSummary(req, res) {
 			role: req.body.role,
 			conversation: req.body.conversation,
 			context: req.body.context,
-			result: result2.data
+			result: result2.text
 		}
 		let nameurl = req.body.paramForm+'/timeline.json';
 		f29azureService.createBlobSimple('data', nameurl, data);
@@ -109,8 +114,8 @@ async function callSummary(req, res) {
 
 	let finalResult = {
 		"msg": "done", 
-		"result1": result.data,
-		"result2": result2.data,
+		"result1": result.text,
+		"result2": result2.text,
 		"status": 200
 		}
 
