@@ -302,7 +302,17 @@ async function navigator_summarize(userId, question, context, timeline, gene){
           <output>
           {{
               "genetic_technique": "<WGS, Exome, Panel>",
-              "pathogenic_variants": "<true, false>",
+              "pathogenic_variants": "<true, false>", # Only truly pathogenic variants exclude likely pathogenic etc
+              "pathogenic_variants_list":[ # Only truly pathogenic variants exclude likely pathogenic etc
+                {{
+                  "variant": "<variant1>",
+                  "date": "<YYYY-MM-DD>"
+                }},
+                {{
+                  "variant": "<variant2>",
+                  "date": "<YYYY-MM-DD>"
+                }}
+              ],
               "genetic_heritage": "<autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance, mitochondrial>",
               "paternal_tests_confirmation": "<true, false>"
           }}
