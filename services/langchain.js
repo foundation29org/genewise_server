@@ -115,6 +115,76 @@ function extractAndParse(summaryText) {
   }
 }
 
+function createHtmlTemplate(htmlContent, jsonContent) {
+  // Based on the JSON variables, we will edit the htmlContent and return the new html
+  // Each variable will control some part of the htmlContent
+  /* Example of JSON vars:
+    {
+    "genetic_technique": "<WGS, Exome, Panel>",   # Based on this var, we will add a div explaining the genetic technique used
+    "pathogenic_variants": "<true, false>", # Based on this var, we will add a div explaining if the patient has pathogenic variants or not and what does it means
+    "pathogenic_variants_list":[ 
+      {
+        "variant": "<variant1>",
+        "date": "<YYYY-MM-DD>"
+      },
+      {
+        "variant": "<variant2>",
+        "date": "<YYYY-MM-DD>"
+      }
+    ],
+    "genetic_heritage": "<autosomalDominant, autosomalRecessive, XLinkedDominant, XLinkedRecessive, YLinked, mitochondrial>", # Based on this var, we will add a div explaining the genetic heritage of the patient and a photo of the inheritance
+    "paternal_tests_confirmation": "<true, false>" # Based on this var, we will add a div explaining if the patient parents has to be tested for the same genetic variants
+    }
+    Example of base htmlContent:
+    <html>
+    <div title="Intro">
+      <p>This is a summary of the patient.</p>
+    </div>
+    <genetic_technique>
+    <div title="Genetic">
+      <p>This is a summary of the patient's genetic information.</p>
+    </div>
+    <pathogenic_variants>
+    <heritage>
+    <paternal_tests_confirmation>
+    <div title="Others">
+      <p>This includes any other information about the patient.</p>
+    </div>
+    </html>
+  */
+    
+  // Step 1: Convert JSON to Object
+  const jsonObject = JSON.parse(jsonContent);
+  // We will load a JSON with the generic information templates
+  const genericTemplates = require('./generic_templates.json');
+
+  // Step 2: Add the new divs to the htmlContent based on the jsonObject
+  if (jsonObject.genetic_technique) {
+    const geneticTechnique = genericTemplates.genetic_technique[jsonObject.genetic_technique];
+    htmlContent = htmlContent.replace(/<EMPTY_genetic_technique>/g, `<div title="Genetic Technique">${geneticTechnique}</div><br/>`);
+  }
+
+  if (jsonObject.pathogenic_variants) {
+    const pathogenicVariants = genericTemplates.pathogenic_variants[jsonObject.pathogenic_variants];
+      htmlContent = htmlContent.replace(/<EMPTY_pathogenic_variants>/g, `<div title="Pathogenic Variants">${pathogenicVariants}</div><br/>`);
+  }
+
+  if (jsonObject.genetic_heritage) {
+    const geneticHeritage = genericTemplates.genetic_heritage[jsonObject.genetic_heritage];
+    htmlContent = htmlContent.replace(/<EMPTY_heritage>/g, `<div title="Genetic Heritage">${geneticHeritage}</div><br/>`);
+  } 
+
+  if (jsonObject.paternal_tests_confirmation) {
+    const paternalTestsConfirmation = genericTemplates.paternal_tests_confirmation[jsonObject.paternal_tests_confirmation];
+    htmlContent = htmlContent.replace(/<EMPTY_paternal_tests_confirmation>/g, `<div title="Paternal Tests Confirmation">${paternalTestsConfirmation}</div><br/>`);
+  }
+
+  // Step 3: Return the new htmlContent
+  console.log(htmlContent);
+
+  return htmlContent;
+}
+
 function extractAndParseGene(summaryText) {
   // Step 1: Extract Text using Regular Expressions
   const matchHtml = summaryText.match(/<html>(.*?)<\/html>/s);
@@ -339,10 +409,25 @@ async function navigator_summarize(userId, question, context, timeline, gene){
           - Be patient-friendly, minimizing medical jargon.
           - Add an extra <output> tag to encapsulate the extra JSON response with the booleans and categorie variables.
           
-          Example of desired HTML format (this is just a formatting example, not related to the input):
+          Example of desired HTML format (this is just a formatting example, REMEMBER TO ADD THE XML TAGS ALWAYS):
           
           <html>
-          <div><h3>Example Summary Title</h3><p>This is a placeholder paragraph summarizing the key points. It should be concise and clear.</p><ul><li>Key Point 1</li><li>Key Point 2</li><li>Key Point 3</li></ul><p>Final remarks or conclusion here.</p></div>
+          <div title="Intro">
+            <h3>Report Introduction</h3>
+            <p>This is a summary of the patient and the report introduction.</p>
+          </div>
+          <EMPTY_genetic_technique> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
+          <div title="Genetic">
+            <h3>Genetic Information</h3>
+            <p>This is a summary of the genetic information results from the analysis.</p>
+          </div>
+          <EMPTY_pathogenic_variants> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
+          <EMPTY_heritage> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
+          <EMPTY_paternal_tests_confirmation> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
+          <div title="Others">
+            <h3>Other Information</h3>
+            <p>This includes any other information about the patient.</p>
+          </div>
           </html>
           
           <output>
@@ -359,7 +444,7 @@ async function navigator_summarize(userId, question, context, timeline, gene){
                   "date": "<YYYY-MM-DD>"
                 }}
               ],
-              "genetic_heritage": "<autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance, mitochondrial>",
+              "genetic_heritage": "<autosomalDominant, autosomalRecessive, XLinkedDominant, XLinkedRecessive, YLinked, mitochondrial>",
               "paternal_tests_confirmation": "<true, false>"
           }}
           </output>
@@ -401,6 +486,9 @@ async function navigator_summarize(userId, question, context, timeline, gene){
 
       if (timeline) {
         response.text = extractAndParse(response.text);
+      } else if (gene) {
+        parts = extractAndParseGene(response.text);
+        response.text = createHtmlTemplate(parts[0], parts[1]);
       }
 
       resolve(response);
