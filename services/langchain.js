@@ -182,7 +182,7 @@ function createHtmlTemplate(htmlContent, jsonContent) {
   // Step 3: Return the new htmlContent
   console.log(htmlContent);
 
-  return htmlContent;
+  return [htmlContent, jsonObject.pathogenic_variants_list];
 }
 
 function extractAndParseGene(summaryText) {
@@ -488,7 +488,9 @@ async function navigator_summarize(userId, question, context, timeline, gene){
         response.text = extractAndParse(response.text);
       } else if (gene) {
         parts = extractAndParseGene(response.text);
-        response.text = createHtmlTemplate(parts[0], parts[1]);
+        formattedParts = createHtmlTemplate(parts[0], parts[1]);
+        response.text = formattedParts[0];
+        response.json = formattedParts[1];
       }
 
       resolve(response);

@@ -24,48 +24,59 @@ async function callNavigator(req, res) {
 
 async function callSummary(req, res) {
 	let prompt = '';
-	if (req.body.role == 'physician') {
-		prompt = `Please provide a comprehensive and detailed explanation of the patient's genetic information.
-		Include all relevant genetic data, variants, and their implications, ensuring the information is precise and thorough for expert medical analysis.
-		The explanation should facilitate a deep understanding of the patient's genetic situation, suitable for a healthcare professional.
-		Start with an overview of the document type and its purposes (Always start with: "The genetic information you just uploaded is a [document type] and its purposes are to [purpose]"),
-		followed by a detailed breakdown of genetic variants, their clinical significance, associated conditions, and recommended actions or treatments,
-		and include any pertinent non-genetic information in the "Other" category.`;
-	} else if (req.body.role == 'young') {
-		prompt = `Please create a simple and engaging explanation of the patient's genetic information, tailored for a young audience.
-		Use clear and straightforward language to explain the patient's genetic situation, including any important genetic variants and their effects.
-		The explanation should be informative yet easy to understand, enabling a young patient to grasp their genetic health status and ask questions.
-		Begin with a basic explanation of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it is important because [purpose]"),
-		followed by a friendly introduction of the patient, a simplified breakdown of genetic information into categories like important variants and their effects,
-		and any other relevant information in an easy-to-understand "Other" category.`;
+	if (req.body.role == 'child') {
+		prompt = `Please create a simple and engaging explanation of the patient's genetic information, tailored for a young child.
+		Use clear, age-appropriate language to explain the patient's genetic situation, focusing on the most important aspects in a way that a child can understand.
+		The explanation should be informative and reassuring, helping a young patient feel more comfortable with their genetic information.
+		Begin with a basic explanation of what genetic information is and why it's important (Always start with: "The information about your genes that you just shared is called a [document type] and it helps us understand [purpose]"),
+		followed by a friendly introduction of the patient, a simplified breakdown of the most important genetic information,
+		and any other relevant information in an easy-to-understand "Other" category.
+		Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.
+		If there are no pathogenic variants, explain that this does not rule out the possibility of a genetic condition.
+
+		Aditionally you will provide an JSON output with some boolean values and categorizations to modify the explanation if needed.
+		
+		In the JSON:
+		Returns the type of genetic technique used: <WGS, Exome, Panel>.
+		Returns the presence of pathogenic variants: <true, false>.
+		Returns what is the genetic heritage: <autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance>.
+		Returns if we need a confirmation with paternal tests: <true, false>.`;
+	} else if (req.body.role == 'adolescent') {
+		prompt = `Please generate a clear and relatable explanation of the patient's genetic information, suitable for an adolescent audience.
+		The explanation should include key information about genetic variants, their potential implications, and any associated conditions, presented in a way that is accessible and engaging for a teenager.
+		Aim to empower the patient with knowledge about their genetic situation while being sensitive to the unique concerns and perspectives of adolescents.
+		Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps us understand [purpose]"),
+		followed by an introduction of the patient, a well-organized presentation of the most relevant genetic data,
+		and include any important additional information in the "Other" category.
+		Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.
+		If there are no pathogenic variants, explain that this does not rule out the possibility of a genetic condition.
+
+		Aditionally you will provide an JSON output with some boolean values and categorizations to modify the explanation if needed.
+		
+		In the JSON:
+		Returns the type of genetic technique used: <WGS, Exome, Panel>.
+		Returns the presence of pathogenic variants: <true, false>.
+		Returns what is the genetic heritage: <autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance>.
+		Returns if we need a confirmation with paternal tests: <true, false>.`;
 	} else if (req.body.role == 'adult') {
-		let promptinic = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
-    The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
-    Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
-    Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
-    followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
-    and include any relevant additional information in the "Other" category.
-    Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.`;
+		prompt = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
+		The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
+		Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
+		Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
+		followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
+		and include any relevant additional information in the "Other" category.
+		Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.
+		If there are no pathogenic variants, explain that this does not rule out the possibility of a genetic condition.
 
-	prompt = `Please generate a clear and concise explanation of the patient's genetic information, suitable for an adult audience.
-    The explanation should include essential information about genetic variants, their potential implications, and any associated conditions, presented in a way that is easy to understand for a non-expert.
-    Aim to empower the patient with knowledge about their genetic situation to facilitate informed discussions with healthcare providers.
-    Start with a brief overview of the document type and its purpose (Always start with: "The genetic information you just uploaded is a [document type] and it helps to explain [purpose]"),
-    followed by an introduction of the patient, a well-organized presentation of genetic data in categories like important variants, their potential effects, associated conditions, etc.,
-    and include any relevant additional information in the "Other" category.
-    Ensure that the explanation is informative and neutral, avoiding definitive conclusions or assurances about the absence or presence of health issues based solely on genetic information.
-	If there are no pathogenic variants, explain that this does not rule out the possibility of a genetic condition.
-
-	Aditionally you will provide an JSON output with some boolean values and categorizations to modify the explanation if needed.
-	
-	In the JSON:
-	Returns the type of genetic technique used: <WGS, Exome, Panel>.
-	Returns the presence of pathogenic variants: <true, false>.
-	Returns what is the genetic heritage: <autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance>.
-	Returns if we need a confirmation with paternal tests: <true, false>.
-
-	`;
-	}
+		Aditionally you will provide an JSON output with some boolean values and categorizations to modify the explanation if needed.
+		
+		In the JSON:
+		Returns the type of genetic technique used: <WGS, Exome, Panel>.
+		Returns the presence of pathogenic variants: <true, false>.
+		Returns what is the genetic heritage: <autosomal dominant, autosomal recessive, X-linked dominant, X-linked recessive, Y-linked inheritance>.
+		Returns if we need a confirmation with paternal tests: <true, false>.
+		`;
+		}
 
 	let prompt2 = `Please create a JSON timeline from the patient's genetic information and individual events, with keys for 'date', 'eventType', and 'keyGeneticEvent'.
 	Extract main genetic events from the documents and individual events, and add them to the timeline. EventType could only be 'diagnosis', 'treatment', 'test'.
@@ -86,7 +97,7 @@ async function callSummary(req, res) {
 	console.log("Resultado 2");
 	console.log(result2);
 
-	if(result.data){
+	if(result.text){
 		let data = {
 			nameFiles: req.body.nameFiles,
 			promt: prompt,
@@ -99,7 +110,7 @@ async function callSummary(req, res) {
 		f29azureService.createBlobSimple('data', nameurl, data);
 	}
 
-	if(result2.data){
+	if(result2.text){
 		let data = {
 			nameFiles: req.body.nameFiles,
 			promt: prompt2,
