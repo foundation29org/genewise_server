@@ -150,10 +150,11 @@ function getTranslationDictionaryInvertMicrosoft2 (text, source_lang){
 }
 
 function getTranslationSegments(req, res){
+  var originlang = req.body.originlang;
     var lang = req.body.lang;
     var segments = req.body.segments;
     var translationKey = config.translationKey;
-    request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+lang+'&textType=html',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:segments}, (error, response, body) => {
+    request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+originlang+'&to='+lang+'&textType=html',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:segments}, (error, response, body) => {
       if (error) {
         console.error(error)
         insights.error(error);
