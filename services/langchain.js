@@ -1139,17 +1139,13 @@ async function translateSummary(lang, text) {
 
       const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
         `Translate the following text into {input_language}:
-        <text>
+
         {input_text}
-        </text>
 
         The translation should be clear, accurate, and patient-friendly. Avoid unnecessary medical jargon and ensure the translation is understandable for patients and their families.
 
-        Example of desired HTML format (this is just a formatting example, not related to the input):
-        
-        <output example>
-        <div><h3>Example Title</h3><p>This is a placeholder paragraph summarizing the key points. It should be concise and clear.</p></div>
-        </output example>`
+        Provide the translation only in the HTML format as follows:
+        <div><h3>Title</h3><p>Translation goes here.</p></div>`
       );
 
       const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
