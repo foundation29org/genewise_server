@@ -81,6 +81,7 @@ api.post('/translationinvert', corsWithOptions, checkApiKey, translationCtrl.get
 api.post('/translationinvertarray', corsWithOptions, checkApiKey, translationCtrl.getTranslationDictionaryInvert2)
 api.post('/deepltranslationinvert', corsWithOptions, checkApiKey, translationCtrl.getdeeplTranslationDictionaryInvert)
 api.post('/translation/segments', corsWithOptions, checkApiKey, translationCtrl.getTranslationSegments)
+api.post('/translation/ia', corsWithOptions, checkApiKey, translationCtrl.getTranslationIA)
 
 
 

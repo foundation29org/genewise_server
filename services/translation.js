@@ -5,6 +5,7 @@ const request = require('request')
 const deepl = require('deepl-node');
 const insights = require('../services/insights')
 const deeplApiKey = config.DEEPL_API_KEY;
+const langchain = require('../services/langchain')
 
 function getDetectLanguage(req, res) {
     var jsonText = req.body;
@@ -149,10 +150,11 @@ function getTranslationDictionaryInvertMicrosoft2 (text, source_lang){
 }
 
 function getTranslationSegments(req, res){
+  var originlang = req.body.originlang;
     var lang = req.body.lang;
     var segments = req.body.segments;
     var translationKey = config.translationKey;
-    request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+lang+'&textType=html',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:segments}, (error, response, body) => {
+    request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+originlang+'&to='+lang+'&textType=html',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:segments}, (error, response, body) => {
       if (error) {
         console.error(error)
         insights.error(error);
@@ -311,6 +313,14 @@ async function deepLtranslate2(text, target) {
  
 }
 
+async function getTranslationIA(req, res){
+  var lang = req.body.lang;
+  var text = req.body.text;
+
+  var result = await langchain.translateSummary(lang, text);
+	res.status(200).send(result);
+}
+
 module.exports = {
   getDetectLanguage,
   getTranslationDictionary,
@@ -321,5 +331,6 @@ module.exports = {
   getDeeplCode,
   deepLtranslate,
   getdeeplTranslationDictionaryInvert,
-  getTranslationDictionaryInvert2
+  getTranslationDictionaryInvert2,
+  getTranslationIA
 }
