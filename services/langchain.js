@@ -14,6 +14,7 @@ const AZURE_OPENAI_API_KEY = config.OPENAI_API_KEY;
 const AZURE_OPENAI_API_KEY_US = config.OPENAI_API_KEY_US;
 const OPENAI_API_KEY = config.OPENAI_API_KEY_J;
 const OPENAI_API_VERSION = config.OPENAI_API_VERSION;
+const OPENAI_API_VERSION_US = config.OPENAI_API_VERSION_US;
 const OPENAI_API_BASE = config.OPENAI_API_BASE;
 const OPENAI_API_BASE_US = config.OPENAI_API_BASE_US;
 const client = new Client({
@@ -73,11 +74,11 @@ function createModels(projectName) {
     callbacks: [tracer],
   });
 
-  const azure128k = new ChatOpenAI({
+  const azuregpt4mini = new ChatOpenAI({
     azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
     azureOpenAIApiVersion: OPENAI_API_VERSION,
     azureOpenAIApiInstanceName: OPENAI_API_BASE,
-    azureOpenAIApiDeploymentName: "nav29turbo",
+    azureOpenAIApiDeploymentName: "gpt-4o-mini",
     temperature: 0,
     timeout: 500000,
     callbacks: [tracer],
@@ -85,7 +86,7 @@ function createModels(projectName) {
 
   const azuregpt4o = new ChatOpenAI({
     azureOpenAIApiKey: AZURE_OPENAI_API_KEY_US,
-    azureOpenAIApiVersion: OPENAI_API_VERSION,
+    azureOpenAIApiVersion: OPENAI_API_VERSION_US,
     azureOpenAIApiInstanceName: OPENAI_API_BASE_US,
     azureOpenAIApiDeploymentName: "gpt-4o",
     temperature: 0,
@@ -93,7 +94,7 @@ function createModels(projectName) {
     callbacks: [tracer],
   });
   
-  return { azuregpt4, azure32k, claude2, model128k, azure128k, azuregpt4o };
+  return { azuregpt4, azure32k, claude2, model128k, azuregpt4mini, azuregpt4o };
 }
 
 function extractAndParse(summaryText) {
@@ -218,7 +219,7 @@ async function navigator_chat(userId, question, conversation, context){
     try {
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { azuregpt4mini } = createModels(projectName);
   
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -286,7 +287,7 @@ async function navigator_chat(userId, question, conversation, context){
       const chain = new ConversationChain({
         memory: memory,
         prompt: chatPrompt,
-        llm: azure128k,
+        llm: azuregpt4mini,
       });
 
       const chain_retry = chain.withRetry({
@@ -334,7 +335,7 @@ async function navigator_summarize(userId, question, context, timeline, gene){
     try {
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { azuregpt4o } = createModels(projectName);
   
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -512,7 +513,7 @@ async function navigator_summarizeTranscript(userId, question, conversation, con
     try {
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { azuregpt4mini } = createModels(projectName);
   
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -580,7 +581,7 @@ async function navigator_summarizeTranscript(userId, question, conversation, con
       const chain = new ConversationChain({
         memory: memory,
         prompt: chatPrompt,
-        llm: azure128k,
+        llm: azuregpt4mini,
       });
 
       const chain_retry = chain.withRetry({
@@ -625,7 +626,7 @@ async function navigator_summarize_dx(userId, question, conversation, context){
     try {
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { claude2 } = createModels(projectName);
   
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -986,7 +987,7 @@ async function categorize_docs(userId, content){
 
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { azure32k, azuregpt4mini } = createModels(projectName);
 
       // Format and call the prompt to categorize each document
       clean_doc = content.replace(/{/g, '{{').replace(/}/g, '}}');
@@ -995,7 +996,7 @@ async function categorize_docs(userId, content){
       
       const tokens = countTokens.countTokens(clean_doc);
 
-      let selectedModel = tokens > 30000 ? azure128k : azure32k;
+      let selectedModel = tokens > 30000 ? azuregpt4mini : azure32k;
       
       console.log("Tokens: ", tokens, "Model: ", selectedModel);
       
@@ -1073,7 +1074,7 @@ async function combine_categorized_docs(userId, context){
 
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4, azure32k, claude2, openai128k, azure128k, azuregpt4o } = createModels(projectName);
+      let { azuregpt4mini } = createModels(projectName);
 
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -1090,7 +1091,7 @@ async function combine_categorized_docs(userId, context){
 
       const categoryChain = new LLMChain({
         prompt: chatPrompt,
-        llm: azure128k,
+        llm: azuregpt4mini,
       });
 
       const category = await categoryChain.call({
@@ -1130,7 +1131,7 @@ async function translateSummary(lang, text) {
     try {
       // Create the models
       const projectName = `TRANSLATE - ${config.LANGSMITH_PROJECT}`;
-      let { azure128k } = createModels(projectName); // Ajusta esto si necesitas otros modelos
+      let { azuregpt4mini } = createModels(projectName); // Ajusta esto si necesitas otros modelos
 
       // Format and call the prompt
       const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
@@ -1152,7 +1153,7 @@ async function translateSummary(lang, text) {
 
       const chain = new LLMChain({
         prompt: chatPrompt,
-        llm: azure128k,
+        llm: azuregpt4mini,
       });
 
       const chain_retry = chain.withRetry({
