@@ -6,7 +6,6 @@ const express = require('express')
 const langCtrl = require('../controllers/all/lang')
 
 const translationCtrl = require('../services/translation')
-const openAIserviceCtrl = require('../services/openai')
 const bookServiceCtrl2 = require('../services/books')
 const docsCtrl = require('../controllers/user/patient/documents')
 const cors = require('cors');
@@ -70,9 +69,6 @@ api.get('/langs/',  langCtrl.getLangs)
 api.post('/upload', corsWithOptions, checkApiKey, docsCtrl.uploadFile)
 api.post('/callnavigator', corsWithOptions, checkApiKey, bookServiceCtrl2.callNavigator)
 api.post('/callsummary', corsWithOptions, checkApiKey, bookServiceCtrl2.callSummary)
-
-//services OPENAI
-api.post('/callopenaicontext', corsWithOptions, checkApiKey, openAIserviceCtrl.callOpenAiContext)
 
 //translations
 api.post('/getDetectLanguage', corsWithOptions, checkApiKey, translationCtrl.getDetectLanguage)
