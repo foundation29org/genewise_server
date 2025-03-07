@@ -14,6 +14,7 @@ const AZURE_OPENAI_API_KEY = config.OPENAI_API_KEY;
 const AZURE_OPENAI_API_KEY_US = config.OPENAI_API_KEY_US;
 const OPENAI_API_KEY = config.OPENAI_API_KEY_J;
 const OPENAI_API_VERSION = config.OPENAI_API_VERSION;
+const OPENAI_API_VERSION_O1 = config.OPENAI_API_VERSION_O1;
 const OPENAI_API_VERSION_US = config.OPENAI_API_VERSION_US;
 const OPENAI_API_BASE = config.OPENAI_API_BASE;
 const OPENAI_API_BASE_US = config.OPENAI_API_BASE_US;
@@ -93,8 +94,17 @@ function createModels(projectName) {
     timeout: 500000,
     callbacks: [tracer],
   });
+
+  const azureo1 = new ChatOpenAI({
+    azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
+    azureOpenAIApiVersion: OPENAI_API_VERSION_O1,
+    azureOpenAIApiInstanceName: OPENAI_API_BASE,
+    azureOpenAIApiDeploymentName: "o1",
+    timeout: 500000,
+    callbacks: [tracer],
+  });
   
-  return { azuregpt4, azure32k, claude2, model128k, azuregpt4mini, azuregpt4o };
+  return { azuregpt4, azure32k, claude2, model128k, azuregpt4mini, azuregpt4o, azureo1 };
 }
 
 function extractAndParse(summaryText) {
@@ -335,7 +345,7 @@ async function navigator_summarize(userId, question, context, timeline, gene){
     try {
       // Create the models
       const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azuregpt4o } = createModels(projectName);
+      let { azureo1 } = createModels(projectName);
   
       // Format and call the prompt
       let cleanPatientInfo = "";
@@ -458,7 +468,7 @@ async function navigator_summarize(userId, question, context, timeline, gene){
   
       const chain = new LLMChain({
         prompt: chatPrompt,
-        llm: azuregpt4o,
+        llm: azureo1,
       });
 
       const chain_retry = chain.withRetry({
