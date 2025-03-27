@@ -15,13 +15,6 @@ const accountname = config.BLOB.NAMEBLOB;
 const form_recognizer_key = config.FORM_RECOGNIZER_KEY
 const form_recognizer_endpoint = config.FORM_RECOGNIZER_ENDPOINT
 
-
-
-async function callNavigator(req, res) {
-	var result = await langchain.navigator_chat(req.body.userId, req.body.question, req.body.conversation, req.body.context);
-	res.status(200).send(result);
-}
-
 async function callSummary(req, res) {
 	let prompt = '';
 	if (req.body.role == 'child') {
@@ -133,29 +126,6 @@ async function callSummary(req, res) {
 	res.status(200).send(finalResult);
 	}
 
-
-async function azureFuncSummary(req, prompt, timeline, gene){
-    return new Promise(async function (resolve, reject) {
-        const functionUrl = config.AF29URL + `/api/HttpTriggerSummarizer?code=${config.functionKey}`;
-        axios.post(functionUrl, req.body.context, {
-            params: {
-                prompt: prompt,
-                userId: req.body.userId,
-				timeline: timeline,
-				gene: gene
-            },
-            headers: {
-                'Content-Type': 'application/json'
-            },
-        }).then(async response => {
-            resolve(response);
-        }).catch(error => {
-          console.error("Error:", error);
-          reject(error);
-        });
-    });
-}
-
 async function form_recognizer(userId, documentId, containerName, url) {
 	return new Promise(async function (resolve, reject) {
 		var url2 = "https://" + accountname + ".blob.core.windows.net/" + containerName + "/" + url + sas;
@@ -188,8 +158,6 @@ async function form_recognizer(userId, documentId, containerName, url) {
 			// console.log(resultResponse);
 			// console.log(resultResponse.data.error.details);
 			let content = resultResponse.data.analyzeResult.content;
-
-			//const category_summary = await langchain.categorize_docs(userId, content);
 	
 			var response = {
 			"msg": "done", 
@@ -212,7 +180,6 @@ async function form_recognizer(userId, documentId, containerName, url) {
   }
 
 module.exports = {
-	callNavigator,
 	callSummary,
 	form_recognizer,
 }
