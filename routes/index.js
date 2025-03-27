@@ -67,7 +67,6 @@ api.get('/langs/',  langCtrl.getLangs)
 // documentsCtrl routes, using the controller documents, this controller has methods
 
 api.post('/upload', corsWithOptions, checkApiKey, docsCtrl.uploadFile)
-api.post('/callnavigator', corsWithOptions, checkApiKey, bookServiceCtrl2.callNavigator)
 api.post('/callsummary', corsWithOptions, checkApiKey, bookServiceCtrl2.callSummary)
 
 //translations
