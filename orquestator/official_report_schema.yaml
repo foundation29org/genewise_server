@@ -1,0 +1,226 @@
+# Esquema que describe la estructura y contenido esperado del Informe Genético Oficial (WES/CES)
+# Fuente: Descripción proporcionada por el usuario.
+report_schema:
+  Header:
+    id: Header
+    purpose: Identificación institucional y contacto.
+    content_description: Logos institucionales (e.g., SJD), nombre del servicio, dirección, teléfono, email.
+    format: Cabecera estándar.
+    key_data_points:
+      - institution_name
+      - service_name
+      - address
+      - contact_info
+
+  Report_Title:
+    id: Report_Title
+    purpose: Especifica el tipo de test realizado.
+    content_description: Título como "INFORME DE SECUENCIACIÓN MASIVA - WES" o "INFORME DE SECUENCIACIÓN MASIVA - CES".
+    format: Título grande y centrado.
+    key_data_points:
+      - test_type (WES/CES)
+
+  Patient_Sample_Info_Block:
+    id: Patient_Sample_Info_Block
+    purpose: Identificación única del paciente, muestra y análisis.
+    format: Disposición en dos columnas (etiqueta: valor).
+    key_data_points:
+      - patient_name: string
+      - gender: string (Varón/Mujer)
+      - sample_code: string (ID único muestra)
+      - sample_extraction_date: date
+      - study_request_date: date
+      - mother_info: string (Opcional)
+      - father_info: string (Opcional)
+      - analysis_code: string (ID único análisis)
+      - nhc: string (Número Historia Clínica)
+      - date_of_birth: date
+      - sample_type: string (e.g., ADN de Sangre Periférica)
+
+  Reason_for_Consultation:
+    id: Reason_for_Consultation
+    purpose: Contexto clínico y motivo del estudio.
+    format: Secciones etiquetadas con texto narrativo.
+    key_data_points:
+      - indication_for_study:
+          description: Razón clínica, sospecha diagnóstica, genes específicos o HPOs mencionados.
+          type: narrative_text
+      - requesting_clinician_info:
+          description: Departamento o servicio solicitante.
+          type: string
+
+  Phenotype:
+    id: Phenotype
+    purpose: Descripción estandarizada de las características clínicas.
+    format: Lista de términos HPO (código: descripción).
+    key_data_points:
+      - hpo_terms:
+          type: list
+          item_format: "HP:XXXXXXX Term_Description"
+
+  Results:
+    id: Resultados
+    purpose: Resumen de alto nivel de los hallazgos principales.
+    content_description: >
+      Puede declarar directamente un hallazgo P/LP explicativo (e.g., "se identifica variante..."),
+      referir a Anexo I para detalles (e.g., "hallazgos detallados en Anexo I"),
+      o indicar ausencia de hallazgos relevantes (e.g., "no se identifican variantes...", "sin hallazgos de interés").
+    format: Texto narrativo. Ocasionalmente tabla simple.
+    key_data_points:
+      - summary_finding: string
+      - references_annex_i: boolean
+
+  Interpretation:
+    id: Interpretacion
+    purpose: Explicación del significado de variantes específicas reportadas (si las hay en esta sección o referenciadas desde Anexo I/Conclusiones).
+    content_description: Detalles de la variante (gen, coordenadas, transcrito, ADNc, proteína), evidencia (bases de datos, literatura, criterios ACMG/AMP), relación con la clínica.
+    format: Texto narrativo técnico.
+    key_data_points:
+      - variant_details: (if applicable)
+          - gene: string
+          - genomic_location: string
+          - transcript: string
+          - cdna_change: string
+          - protein_change: string
+          - classification: string (Pathogenic/Likely Pathogenic/VUS)
+          - evidence_summary: narrative_text (db frequencies, ClinVar, literature, ACMG codes)
+
+  Conclusions:
+    id: Conclusiones
+    purpose: Interpretación diagnóstica final en contexto clínico.
+    content_description: Declara si se encontró o no una causa genética (variante P/LP) que explique el fenotipo. Reitera el hallazgo clave si lo hubo. Puede mencionar explícitamente si se ofrece o no diagnóstico genético.
+    format: Texto narrativo.
+    key_data_points:
+      - diagnostic_statement: string (e.g., "confirma diagnóstico genético", "no se identifica causa genética")
+      - key_finding_reiteration: string (optional)
+
+  Recommendations:
+    id: Recomendaciones
+    purpose: Guía sobre los próximos pasos clínicos o de laboratorio.
+    content_description: Sugerencias como asesoramiento genético (AG), estudios familiares (segregación), re-análisis futuro, contacto con el laboratorio, otras pruebas.
+    format: Texto narrativo, a menudo estandarizado.
+    key_data_points:
+      - genetic_counseling_recommendation: boolean
+      - family_studies_recommendation: boolean
+      - contact_lab_info: boolean
+      - future_reanalysis_suggestion: boolean
+      - other_test_recommendations: list
+
+  Validation:
+    id: Validacion
+    purpose: Fechas oficiales de firma y generación del informe.
+    format: Fechas etiquetadas.
+    key_data_points:
+      - electronic_signature_date: date
+      - report_creation_date: date
+
+  Methodology:
+    id: Metodologia
+    purpose: Descripción técnica del proceso de laboratorio y bioinformático.
+    content_description: Tipo de secuenciación (NGS), kit de enriquecimiento, instrumento, regiones analizadas, genoma de referencia (e.g., GRCh37/hg19), pipeline bioinformático, software de análisis (e.g., Alissa Interpret), métricas de cobertura (e.g., >20x).
+    format: Párrafo(s) de texto técnico narrativo.
+    key_data_points:
+      - sequencing_type: string (NGS)
+      - platform: string (e.g., Illumina NovaSeq)
+      - enrichment_kit: string
+      - regions_analyzed: string (e.g., coding + flanking)
+      - reference_genome: string
+      - bioinformatics_pipeline_summary: narrative_text
+      - analysis_software: string
+      - coverage_target: string
+
+  Limitations:
+    id: Limitaciones
+    purpose: Informa sobre lo que el test podría no detectar.
+    content_description: Limitaciones inherentes (cobertura incompleta, tipos de variantes no detectables - SVs, repeticiones, intrones profundos), posible necesidad de validación.
+    format: Texto narrativo.
+    key_data_points:
+      - coverage_limitations: boolean
+      - variant_type_limitations: boolean (e.g., structural, regulatory, repeat expansions)
+
+  Reporting_Criteria:
+    id: Criterios_del_informe
+    purpose: Define las reglas para la clasificación y reporte de variantes.
+    content_description: Referencia a guías ACMG/AMP, tipos de variantes reportadas (P, LP), criterios para VUS (generalmente solo si encajan fenotipo/herencia), política de hallazgos secundarios/incidentales (referencia a lista ACMG SF), consulta con clínico si es necesario.
+    format: Texto narrativo con referencias.
+    key_data_points:
+      - classification_guidelines: string (e.g., ACMG/AMP [1,2])
+      - reported_variant_classes: list (e.g., Pathogenic, Likely Pathogenic, VUS under conditions)
+      - secondary_findings_policy: string (e.g., based on ACMG SF list [3])
+
+  Analysis_Details:
+    id: Detalles_del_Single_patient_analisis
+    purpose: Metadatos de la instancia específica del análisis bioinformático.
+    format: Pares clave-valor.
+    key_data_points:
+      - domain: string
+      - analysis_creation_date: date
+      - target_panels: list (e.g., "HPO", "Ehlers-Danlos-Syndrome")
+      - classification_tree: string
+      - genome_build: string (e.g., GRCh37.p13)
+
+  Annotation_Sources:
+    id: Fuentes_de_anotacion
+    purpose: Lista de bases de datos y herramientas usadas para la interpretación.
+    format: Lista (Nombre herramienta/DB, Versión/Fecha).
+    key_data_points:
+      - annotation_resources:
+          type: list
+          item_format: "Resource Name (Version/Date)"
+          examples: [ClinVar, HGMD Pro, gnomAD, OMIM, dbSNP, CADD, Mastermind, CGDS_GENE]
+
+  Data_Protection:
+    id: Proteccion_de_datos
+    purpose: Aviso legal sobre privacidad de datos.
+    content_description: Texto legal estándar sobre uso de datos y derechos del paciente.
+    format: Texto legal estandarizado.
+
+  References:
+    id: Referencias
+    purpose: Citas de las guías mencionadas (ACMG/AMP, ACMG SF).
+    format: Lista numerada de citas.
+    key_data_points:
+      - citation_list: list
+
+  Annex_I_Other_Findings:
+    id: Anexo_I
+    purpose: Lista detallada de variantes genéticas relevantes identificadas (puede incluir P, LP, VUS relevantes). Podría contener el hallazgo primario si no se resume en pág 1.
+    format: Tabla seguida opcionalmente de texto interpretativo para variantes específicas.
+    content:
+      variant_table:
+        columns: [Gen, Localizacion, Transcrito, CDNA, Proteina, Genotipo, Profundidad, Clasificacion (Implícita o explícita)] # Clasificación puede estar aquí o en texto adjunto/Interpretacion
+        rows: list of variants
+      interpretation_notes: narrative_text (optional, below table or linked to specific variants)
+
+  Secondary_Findings:
+    id: Hallazgos_secundarios
+    purpose: Reporte de hallazgos incidentales médicamente accionables.
+    content_description: Lista hallazgos P/LP según política del laboratorio (e.g., lista ACMG SF) o declara "Sin hallazgos". Puede incluir detalles de la variante aquí o referenciar Anexo I/Interpretacion.
+    format: Texto narrativo, potentially listing variants.
+    key_data_points:
+      - findings_list: list or string ("Sin hallazgos")
+      - variant_details: (if findings present) list of [Gen, Variante, Genotipo, Clasificacion]
+
+  Annex_II_Genes_Analyzed:
+    id: Anexo_II
+    purpose: Define el alcance del análisis en términos de genes cubiertos.
+    content_description: Lista de genes analizados (basado en panel, HPOs, o todos para WES/CES). Puede estar categorizada.
+    format: Lista de nombres de genes.
+    key_data_points:
+      - gene_list: list or categorized list
+
+  Annex_III_Low_Coverage_Genes:
+    id: Anexo_III
+    purpose: Identifica genes con cobertura subóptima.
+    content_description: Lista genes con cobertura < umbral (e.g., 80% a 20X) o declara que todos los genes relevantes tienen cobertura adecuada.
+    format: Lista de nombres de genes o declaración de cobertura adecuada.
+    key_data_points:
+      - low_coverage_gene_list: list or string ("Cobertura adecuada")
+
+  Footer:
+    id: Footer
+    purpose: Identificación del informe y paginación.
+    format: Texto estándar de pie de página.
+    key_data_points:
+      - report_identifier: string
+      - page_number: string (Página X de Y)

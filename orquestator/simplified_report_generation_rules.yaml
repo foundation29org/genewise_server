@@ -1,0 +1,341 @@
+# Proceso DETALLADO para generar el informe simplificado a partir del informe genético oficial
+# Versión 2: Con variables explícitas, lógica detallada y comentarios.
+
+# --- Metadatos y Referencias ---
+generation_process_metadata:
+  version: 2.0
+  description: Ruleset for transforming official genetic report into a simplified version.
+  input_source_schema: official_report_schema.yaml # Refers to the structure defined above
+
+# --- Definición de Variables Clave del Proceso ---
+# Estas variables se determinan al inicio y controlan el flujo posterior.
+process_variables:
+  # Variable: primary_finding_exists (Boolean)
+  # Determina si el informe oficial identifica una causa genética primaria (P/LP).
+  - variable_name: primary_finding_exists
+    type: boolean
+    determination_logic:
+      description: >
+        Evaluar secciones 'Resultados', 'Conclusiones' y 'Anexo_I' del informe oficial.
+        Retorna TRUE si se cumple ALGUNA de las siguientes condiciones:
+        1. 'Resultados' o 'Conclusiones' contienen texto indicando explícitamente un hallazgo P/LP causal
+           (e.g., "se identifica variante patogénica en X que explica la clínica",
+           "resultado compatible con diagnóstico de Y", "confirmación genética de Z").
+        2. 'Anexo_I' lista una variante clasificada como Patogénica (P) o Probablemente Patogénica (LP)
+           Y la sección 'Interpretacion' o 'Conclusiones' o el texto asociado en 'Anexo_I'
+           la vincula explícitamente como la causa de la clínica/fenotipo del paciente.
+        Retorna FALSE en caso contrario (e.g., "no se identifican variantes", VUS como único hallazgo relevante, P/LP no relacionadas con fenotipo).
+      source_sections: [Resultados, Conclusiones, Anexo_I, Interpretacion]
+      # Nota: Requiere NLU para interpretar texto o búsqueda de patrones/keywords específicos.
+
+  # Variable: primary_finding_details (Object/Dict | Null)
+  # Almacena los detalles de la variante primaria, si existe. Null si primary_finding_exists es false.
+  - variable_name: primary_finding_details
+    type: object | null
+    determination_logic:
+      condition: primary_finding_exists == true
+      action: >
+        Identificar la variante P/LP específica marcada como causal (según la lógica de 'primary_finding_exists').
+        Extraer sus detalles de 'Anexo_I' (tabla y/o texto asociado) y/o 'Interpretacion'.
+      source_sections: [Anexo_I, Interpretacion, Conclusiones] # Buscar la variante específica identificada como causal
+      data_points_to_extract: [Gen, Localizacion, Transcrito, CDNA, Proteina, Genotipo, Clasificacion (P/LP)]
+      if_condition_false: null # Si no hay hallazgo primario, esta variable es null.
+
+  # Variable: other_findings_list (List)
+  # Lista de variantes del Anexo I que NO son el hallazgo primario Y cumplen criterios de reporte simplificado (VUS relevante, P/LP no causal en gen recesivo, etc.).
+  - variable_name: other_findings_list
+    type: list
+    determination_logic:
+      description: >
+        Iterar sobre todas las variantes listadas en la tabla de 'Anexo_I'.
+        Filtrar para incluir solo aquellas que:
+        1. NO son la variante almacenada en 'primary_finding_details' (si existe).
+        2. Cumplen con los criterios definidos para la sección 4 del informe simplificado:
+           - Clasificadas como VUS (y potencialmente relevantes para el fenotipo según el informe original).
+           - Clasificadas como P/LP pero no consideradas causales en el informe original (e.g., heterocigota en gen recesivo sin segunda variante).
+           - CNVs listadas en Anexo I (si aplica, aunque pueden tener sección propia).
+        Almacenar detalles relevantes de estas variantes (Gen, CDNA, Proteina, Genotipo, Clasificacion).
+      source_sections: [Anexo_I, Interpretacion, Conclusiones] # Para verificar causalidad y clasificación
+      output_item_format: {Gen: string, CDNA: string, Proteina: string, Genotipo: string, Clasificacion: string, Tipo: VUS/P_LP_Recessive_Het/P_LP_VUS_AR/CNV} # Tipo añadido para facilitar lógica posterior
+
+  # Variable: secondary_findings_list (List)
+  # Lista de hallazgos secundarios reportados explícitamente.
+  - variable_name: secondary_findings_list
+    type: list
+    determination_logic:
+      description: >
+        Verificar la sección 'Hallazgos_secundarios' del informe oficial.
+        Si NO contiene "Sin hallazgos" (o texto similar), extraer la lista de variantes reportadas como hallazgos secundarios.
+        Almacenar detalles relevantes (Gen, Variante, Genotipo, Clasificación P/LP).
+      source_sections: [Hallazgos_secundarios]
+      # Nota: La estructura puede variar; puede ser texto narrativo o una lista/tabla.
+      output_item_format: {Gen: string, Variante: string, Genotipo: string, Clasificacion: string (P/LP)} # Ajustar según formato real
+
+# --- Definición de Lógicas Reutilizables (Anchors YAML) ---
+
+# Lógica para procesar variantes en "Otros Hallazgos" (Sección 4)
+other_findings_processing_logic: &other_findings_logic
+  # Input: Una variante de la lista `other_findings_list`
+  # Output: Texto narrativo para incluir en la Sección 4.
+  actions_based_on_variant_type:
+    - condition: variant.Tipo == 'VUS'
+      steps:
+        - Generate: "Definición simplificada de 'Variante de Significado Incierto (VUS)'."
+        - Lookup_Generate: # Buscar herencia del gen asociado (OMIM/cache interno)
+            input: variant.Gen
+            action: "Determinar y explicar de forma simple el tipo de herencia más común asociado al gen."
+        - Add_Statement: "'Se debe valorar por el facultativo si esta variante VUS podría encajar clínicamente con el fenotipo del paciente, aunque actualmente no hay suficiente evidencia para confirmarlo o descartarlo.'"
+    - condition: variant.Tipo == 'P_LP_Recessive_Het' # Variante P/LP heterocigota en gen AR, no causal.
+      steps:
+        - Generate: "Explicación simplificada del tipo de herencia autosómica recesiva (AR)."
+        - Generate: "Explicar que para una enfermedad AR se suelen necesitar dos variantes (una de cada progenitor) y que encontrar solo una P/LP en heterocigosis generalmente no explica la clínica (estado de portador)."
+        - Add_Statement: "'Si la sospecha clínica de una enfermedad recesiva asociada a este gen es alta, se podría valorar ampliar estudios para buscar una segunda variante (no detectada por esta técnica o presente en regiones no analizadas).'"
+    - condition: variant.Tipo == 'P_LP_VUS_AR' # Variante P/LP + VUS en el mismo gen AR.
+      steps:
+        - Generate: "Explicar que se ha encontrado una variante P/LP y otra VUS en el mismo gen."
+        - Generate: "Explicación simplificada del tipo de herencia autosómica recesiva (posible herencia compuesta)."
+        - Add_Statement: "'Si el fenotipo del paciente encaja clínicamente con la enfermedad asociada a este gen, se podría valorar un estudio de segregación familiar (estudio de los padres) para ayudar a interpretar si estas dos variantes juntas podrían ser la causa.'"
+    - condition: variant.Tipo == 'CNV' # Variante tipo CNV listada en Anexo I.
+      steps:
+        - Extract_Generate: # Extraer detalles CNV (tamaño, genes, etc.) si están disponibles en Anexo I o Interpretacion.
+            input: variant details from `other_findings_list` item
+            action: "Explicar qué es una CNV (pérdida o ganancia de material genético) y su clasificación si se indica (P, LP, VUS)."
+        - Add_Statement: "'La técnica de secuenciación masiva (WES/CES) no es la más adecuada para detectar y caracterizar CNVs con precisión.'"
+        - Add_Statement: "'Puede ser necesaria la validación y/o caracterización detallada de esta CNV mediante otras técnicas específicas como MLPA o array-CGH, si es clínicamente relevante.'"
+
+# Lógica para procesar hallazgos secundarios (Sección 5)
+secondary_findings_processing_logic: &secondary_findings_logic
+  # Input: Un hallazgo de la lista `secondary_findings_list`
+  # Output: Texto narrativo para incluir en la Sección 5.
+  steps:
+    - Extract: # Extraer detalles del hallazgo secundario
+        input: finding from `secondary_findings_list`
+        data_points: [Gen, Variante, Genotipo, Clasificacion (P/LP)]
+    - Generate: "Explicar brevemente qué es una variante genética."
+    - Define_Term: # Usar definición estándar simplificada
+        term: "Clasificación (Patogénica / Probablemente Patogénica)"
+        context: "Hallazgo secundario accionable."
+    - Define_Term: # Usar definición estándar simplificada
+        term: "Genotipo ({finding.Genotipo})" # e.g., Heterocigosis
+    - Extract_Summarize_Simplify: # Resumir la interpretación del informe oficial si existe
+        source_sections: [Hallazgos_secundarios, Interpretacion] # Buscar interpretación asociada a este hallazgo
+        input: finding.Gen, finding.Variante
+        action: "Resumir y simplificar la relevancia clínica/accionabilidad médica indicada en el informe oficial."
+    - Generate: # Introducción al gen
+        input: finding.Gen
+        action: "Breve introducción sobre la función general del gen (simplificada)."
+    - Lookup_Summarize: # Buscar info de la patología asociada
+        source: "Informe oficial (Hallazgos_secundarios, Interpretacion), OMIM, Orphanet, fuentes ACMG SF."
+        input: finding.Gen
+        action: >
+          Buscar nombre de la patología asociada al hallazgo secundario.
+          Añadir información general y prudente sobre la condición (riesgos, recomendaciones generales si las hay),
+          basándose primero en el informe oficial y complementando con fuentes externas si es necesario.
+          Simplificar si hay espectros amplios.
+    - Determine_Inheritance_Explain_Image: # Determinar patrón de herencia, explicarlo e incluir imagen
+        input: finding.Gen # Buscar patrón asociado a la condición relevante del gen
+        source: "Informe oficial (si lo indica), OMIM, literatura."
+        action: >
+          Identificar el patrón de herencia relevante (AD, AR, XL).
+          Generar explicación simplificada del patrón.
+          Seleccionar e incluir la imagen explicativa correspondiente (del set de 4 imágenes).
+
+# --- Generación de Secciones del Informe Simplificado ---
+simplified_report_sections:
+
+  # Sección 1: Antecedentes (Siempre presente)
+  - section_id: 1_Antecedentes
+    title: "1. Antecedentes"
+    content_generation:
+      - action: Retrieve_Format
+        source: "Historia clínica externa/disponible para el equipo de genética."
+        details: "Incorporar antecedentes clínicos relevantes del paciente en formato narrativo."
+        output: Narrative text.
+
+  # Sección 2: Estudio Realizado (Siempre presente)
+  - section_id: 2_Estudio_Realizado
+    title: "2. Estudio realizado"
+    content_generation:
+      - action: Extract
+        source_section: Report_Title
+        data_point: test_type
+        output_variable: test_type_name # e.g., "WES" or "CES"
+      - action: Generate
+        template_based: true
+        input: test_type_name
+        details: "Añadir explicación estandarizada del tipo de estudio ({test_type_name})."
+      - action: Extract_Summarize
+        source_section: Metodologia
+        data_points: [sequencing_type, regions_analyzed] # Extraer tipo (NGS) y qué se analiza (exoma, genes codificantes)
+        details: "Añadir información general simplificada sobre la tecnología genética utilizada (NGS) y su alcance."
+      - action: Extract_Summarize # Tomar el resumen inicial de la Pág 1
+        source_section: Resultados
+        data_point: summary_finding
+        details: "Incluir la frase resumen principal de la sección 'Resultados' del informe oficial (e.g., 'No se identificaron variantes relevantes', 'Los hallazgos se detallan en Anexo I')."
+      - action: Format
+        details: "Combinar los puntos anteriores en un párrafo coherente."
+        output: Narrative text.
+
+  # Sección 3: Resultado (Contenido depende de `primary_finding_exists`)
+  - section_id: 3_Resultado
+    conditional_logic:
+      based_on: primary_finding_exists
+      # --- CASO A: NO hay hallazgo primario (primary_finding_exists == false) ---
+      if_false:
+        title: "3. Resultado"
+        content_generation:
+          - action: Generate
+            details: "Explicar claramente que el estudio NO ha identificado variantes genéticas clasificadas como Patogénicas o Probablemente Patogénicas que expliquen de forma concluyente la clínica del paciente."
+          - action: Extract_Summarize_Include # Incluir limitaciones relevantes
+            source_section: Limitaciones
+            details: "Mencionar de forma simplificada las limitaciones generales de la técnica (e.g., no analiza todo el ADN, no detecta todos los tipos de variantes), indicando que un resultado negativo no descarta completamente una causa genética."
+          - action: Format
+            output: Narrative text.
+      # --- CASO B: SÍ hay hallazgo primario (primary_finding_exists == true) ---
+      if_true:
+        title: "3. Resultado: Se ha identificado una variante genética relacionada con la clínica"
+        subsections:
+          # 3.1 Variante Genética
+          - subsection_id: 3.1_Variante_Genetica
+            title: "3.1 Variante genética identificada"
+            content_generation:
+              - action: Use_Variable # Usar detalles de la variable pre-calculada
+                variable: primary_finding_details
+                details: "Presentar los detalles de la variante: Gen ({primary_finding_details.Gen}), Notación ADNc ({primary_finding_details.CDNA}), Notación Proteína ({primary_finding_details.Proteina})."
+              - action: Generate
+                details: "Explicar brevemente qué es una variante genética."
+              - action: Define_Term # Usar definición estándar simplificada
+                term: "Clasificación ({primary_finding_details.Clasificacion})" # e.g., Patogénica / Probablemente Patogénica
+              - action: Define_Term # Usar definición estándar simplificada
+                term: "Genotipo ({primary_finding_details.Genotipo})" # e.g., Heterocigosis / Homocigosis
+              - action: Extract_Summarize_Simplify # Resumir la interpretación del informe oficial
+                source_sections: [Interpretacion, Anexo_I] # Buscar interpretación asociada a esta variante
+                input: primary_finding_details
+                action: "Resumir y simplificar la explicación del informe oficial sobre por qué esta variante se considera causal y relevante para la clínica."
+              - action: Format
+                output: Narrative text explaining the primary variant.
+          # 3.2 Gen / Patología asociada
+          - subsection_id: 3.2_Gen_Patologia
+            title: "3.2 Gen y Patología asociada"
+            content_generation:
+              - action: Generate # Introducción al gen
+                  input: primary_finding_details.Gen
+                  action: "Breve introducción sobre la función general del gen {primary_finding_details.Gen} (simplificada)."
+              - action: Lookup_Summarize # Buscar info de la patología
+                  source: "Informe oficial (Interpretacion, Conclusiones), OMIM (usar código si disponible en Fuentes_de_anotacion), Orphanet."
+                  input: primary_finding_details.Gen, Clinical Indication (from Reason_for_Consultation)
+                  action: >
+                    Buscar el nombre de la patología asociada a la variante/gen en el contexto clínico.
+                    Si está descrita en el informe oficial, resumir esa información de forma general y prudente.
+                    Si no, buscar en OMIM/Orphanet y resumir información general sobre la enfermedad (síntomas principales, etc.) de forma prudente.
+                    Si el informe menciona un espectro o varios fenotipos, generalizar la descripción.
+              - action: Format
+                  output: Narrative text describing the gene and associated pathology.
+          # 3.3 Patrón de Herencia
+          - subsection_id: 3.3_Patron_Herencia
+            title: "3.3 Patrón de herencia"
+            content_generation:
+              - action: Determine_Inheritance_Explain_Image # Determinar patrón, explicarlo e incluir imagen
+                  input: primary_finding_details.Gen, primary_finding_details.Genotipo # Considerar genotipo (het/hom) y gen
+                  source: "Informe oficial (Interpretacion, Conclusiones), OMIM, literatura."
+                  action: >
+                    Identificar el patrón de herencia asociado a la patología y consistente con el genotipo (AD, AR, XL Dominante/Recesivo).
+                    Generar explicación simplificada del patrón identificado.
+                    Seleccionar e incluir la imagen explicativa correspondiente (del set de 4 imágenes).
+              - action: Format
+                  output: Narrative text + Image.
+
+  # Sección 4: Otros Hallazgos (Condicional, usa `other_findings_list`)
+  - section_id: 4_Otros_Hallazgos
+    title: "4. Otros hallazgos genéticos de significado incierto o no concluyentes"
+    condition: len(other_findings_list) > 0 # Incluir sección solo si la lista no está vacía
+    include_if: condition is true
+    content_generation:
+      - for_each: variant in other_findings_list # Iterar sobre las variantes pre-filtradas
+        apply_logic: *other_findings_logic # Aplicar la lógica de procesamiento definida en el anchor
+        output_format_per_variant: Separate paragraph or bullet point per variant.
+      - action: Format
+        details: "Combinar las explicaciones de cada variante en esta sección."
+        output: Narrative text (potentially multi-paragraph).
+
+  # Sección 5: Hallazgos Secundarios (Condicional, usa `secondary_findings_list`)
+  - section_id: 5_Hallazgos_Secundarios
+    title: "5. Hallazgos secundarios"
+    condition: len(secondary_findings_list) > 0 # Incluir sección solo si la lista no está vacía
+    include_if: condition is true
+    content_generation:
+      - for_each: finding in secondary_findings_list # Iterar sobre los hallazgos secundarios pre-extraídos
+        apply_logic: *secondary_findings_logic # Aplicar la lógica de procesamiento definida en el anchor
+        output_format_per_finding: Separate subsection or detailed paragraph per finding.
+      - action: Format
+        details: "Combinar las explicaciones de cada hallazgo secundario."
+        output: Narrative text (potentially with sub-sections per finding).
+
+  # Sección 6: Recomendaciones (Siempre presente, contenido adaptado)
+  - section_id: 6_Recomendaciones
+    title: "6. Recomendaciones"
+    content_generation:
+      - action: Generate
+        details: "Incluir texto estándar sobre la posibilidad y recomendación general de re-evaluar los datos genéticos periódicamente (e.g., cada 1-2 años) dado el avance del conocimiento científico."
+      - action: Extract_Filter_Include # Extraer recomendaciones originales relevantes, filtrando las no deseadas
+        source_section: Recomendaciones
+        filter_out_keywords: ["derivación a Asesoramiento Genético", "contactar con el laboratorio", "consulta de Genética Clínica"] # Ignorar estas recomendaciones específicas
+        details: "Incluir otras recomendaciones del informe oficial (e.g., seguimiento clínico específico, otras pruebas sugeridas), si las hubiera y no estuvieran filtradas, presentadas de forma simplificada."
+      - action: Define_Variable # Variable para controlar la frase de estudio a padres
+        variable_name: any_variant_reported_for_interpretation
+        logic: (primary_finding_exists or len(other_findings_list) > 0 or len(secondary_findings_list) > 0) # True si se reportó algo en Sec 3, 4 o 5
+      - action: Conditional_Add_Statement # Añadir frase sobre estudio de padres si aplica
+        condition: any_variant_reported_for_interpretation == true
+        statement: "'En muchas ocasiones, para poder interpretar mejor los resultados y conocer el origen de las variantes genéticas identificadas (si vienen de la madre, del padre o son nuevas), se recomienda realizar un estudio genético a los padres (estudio de segregación), especialmente en aquellas variantes que tengan interés clínico.'"
+      - action: Format
+        details: "Combinar los puntos anteriores en texto narrativo."
+        output: Narrative text.
+
+  # Sección 7: Mensajes Clave (Siempre presente)
+  - section_id: 7_Mensajes_Clave
+    title: "7. Mensajes clave"
+    content_generation:
+      - action: Generate_Summary # Crear resumen basado en secciones anteriores
+        based_on_sections: [3_Resultado, 4_Otros_Hallazgos, 5_Hallazgos_Secundarios] # Considerar los resultados principales
+        details: >
+          Crear un resumen muy conciso (2-4 puntos bullet) con los mensajes más importantes:
+          - ¿Se encontró causa genética? (Sí/No/Incierto)
+          - ¿Cuál es el hallazgo principal (si lo hay)? (Gen/Variante/Enfermedad)
+          - ¿Hay otros hallazgos relevantes (VUS, Secundarios) y qué implican a grandes rasgos?
+      - action: Add_Standard_Disclaimer
+        details: "'Este informe es una interpretación simplificada de los resultados del estudio genético completo. Para una discusión detallada del significado clínico, implicaciones y próximos pasos, es fundamental consultar con su médico especialista o una unidad de genética clínica.'"
+      - action: Format
+        output: Bullet points or short paragraph.
+
+  # Sección 8: Glosario (Siempre presente)
+  - section_id: 8_Glosario
+    title: "8. Glosario"
+    content_generation:
+      - action: Identify_Terms # Identificar términos técnicos usados en este informe simplificado
+        source: "Secciones 1-7 generadas del informe simplificado."
+        terms_to_look_for: ["ADN", "Gen", "Variante genética", "Patogénica", "Probablemente Patogénica", "Significado Incierto (VUS)", "Heterocigosis", "Homocigosis", "Herencia Autosómica Dominante", "Herencia Autosómica Recesiva", "Herencia Ligada al X", "CNV", "WES", "CES", "NGS", "Exoma", "Portador", "Segregación familiar", etc.] # Lista no exhaustiva
+      - action: Define_Terms # Proporcionar definiciones estándar simplificadas
+        details: "Para cada término identificado, añadir una definición clara y concisa adaptada al público general."
+      - action: Format
+        output: List of terms with definitions (e.g., Term: Definition).
+
+# --- Puntos Débiles y Ambigüedades Potenciales ---
+potential_ambiguities_and_challenges:
+  - point: Natural Language Understanding (NLU)
+    description: >
+      La determinación de `primary_finding_exists` y la extracción/simplificación de `Interpretacion` dependen en gran medida de la comprensión del lenguaje natural en secciones narrativas del informe oficial. La variabilidad en la redacción puede dificultar la automatización completa y requerir supervisión humana o modelos de IA avanzados.
+  - point: External Data Dependency
+    description: >
+      La búsqueda de información sobre patologías, herencia de genes (OMIM, Orphanet) requiere acceso a bases de datos externas actualizadas. La disponibilidad, consistencia y interpretabilidad de estos datos puede variar. Se necesita una estrategia para manejar datos faltantes o conflictivos.
+  - point: Variability in Official Reports
+    description: >
+      Los informes oficiales, aunque sigan una plantilla, pueden tener variaciones en formato, nivel de detalle y ubicación exacta de la información (e.g., clasificación de variantes, interpretación). Las reglas deben ser robustas a estas variaciones o requerir ajustes.
+  - point: Subjectivity of Simplification
+    description: >
+      El nivel de "simplificación" adecuado es subjetivo. Las reglas intentan capturar la intención, pero la generación final del texto requiere un equilibrio entre precisión técnica y comprensibilidad para un público no experto, lo que puede necesitar validación humana.
+  - point: Inference vs. Explicit Information
+    description: >
+      Algunos datos, como el patrón de herencia exacto o la causalidad de una variante, pueden requerir inferencia si no están explícitamente declarados en el informe oficial, lo cual añade complejidad y potencial de error.
+  - point: Handling Edge Cases
+    description: >
+      Casos complejos (e.g., mosaicismo, herencia digénica, múltiples hallazgos primarios) pueden no estar completamente cubiertos por las reglas actuales y requerirían lógica adicional o manejo manual.
