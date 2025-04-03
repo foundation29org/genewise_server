@@ -1,415 +1,242 @@
+'use strict';
+
 const { ChatOpenAI } = require("langchain/chat_models/openai");
-const config = require('../config')
-const insights = require('../services/insights');
-const { Client } = require("langsmith")
+const config = require('../config');
+const insights = require('../services/insights'); // Assuming this is for logging/monitoring
+const { Client } = require("langsmith");
 const { LangChainTracer } = require("langchain/callbacks");
-const { ChatBedrock } = require("langchain/chat_models/bedrock");
-const { ConversationChain, LLMChain } = require("langchain/chains");
-const { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate, MessagesPlaceholder } = require("langchain/prompts");
-const { BufferMemory, ChatMessageHistory } = require("langchain/memory");
-const { HumanMessage, AIMessage } = require("langchain/schema");
-const countTokens = require( '@anthropic-ai/tokenizer'); 
+// const { ChatBedrock } = require("langchain/chat_models/bedrock"); // Keep if needed, but example uses OpenAI
+const { LLMChain } = require("langchain/chains");
+const { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } = require("langchain/prompts");
+// Removed unused imports: ConversationChain, MessagesPlaceholder, BufferMemory, ChatMessageHistory, HumanMessage, AIMessage, countTokens
 
+// --- Configuration & Clients ---
 const AZURE_OPENAI_API_KEY = config.OPENAI_API_KEY;
-const OPENAI_API_KEY = config.OPENAI_API_KEY_J;
-const OPENAI_API_VERSION = config.OPENAI_API_VERSION;
-const OPENAI_API_VERSION_O1 = config.OPENAI_API_VERSION_O1;
+const OPENAI_API_VERSION_O1 = config.OPENAI_API_VERSION_O1; // Assuming this is the primary version needed
 const OPENAI_API_BASE = config.OPENAI_API_BASE;
-const client = new Client({
-  apiUrl: "https://api.smith.langchain.com",
-  apiKey: config.LANGSMITH_API_KEY,
-});
+const LANGSMITH_API_KEY = config.LANGSMITH_API_KEY;
+const LANGSMITH_PROJECT_BASE = config.LANGSMITH_PROJECT || 'DefaultProject'; // Default project name
 
+const langsmithClient = LANGSMITH_API_KEY ? new Client({
+    apiUrl: "https://api.smith.langchain.com",
+    apiKey: LANGSMITH_API_KEY,
+}) : undefined;
+
+// --- Model Creation ---
+/**
+ * Creates configured ChatOpenAI models with LangSmith tracing.
+ * @param {string} projectName - The LangSmith project name.
+ * @returns {object} Object containing configured models (e.g., { llm }).
+ */
 function createModels(projectName) {
-  const tracer = new LangChainTracer({
-    projectName: projectName,
-    client
+  const callbacks = langsmithClient ? [new LangChainTracer({ projectName, client: langsmithClient })] : undefined;
+
+  // Using 'o1' as the primary model based on the original navigator_summarize usage
+  const llm = new ChatOpenAI({
+      azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
+      azureOpenAIApiVersion: OPENAI_API_VERSION_O1,
+      azureOpenAIApiInstanceName: OPENAI_API_BASE,
+      azureOpenAIApiDeploymentName: "o1", // Using the 'o1' deployment
+      // temperature: 0.1, // <--- REMOVE THIS LINE
+      timeout: 500000,
+      callbacks: callbacks,
+      // Consider adding maxTokens if needed to control output length/cost
   });
 
-  const azuregpt4mini = new ChatOpenAI({
-    azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
-    azureOpenAIApiVersion: OPENAI_API_VERSION,
-    azureOpenAIApiInstanceName: OPENAI_API_BASE,
-    azureOpenAIApiDeploymentName: "gpt-4o-mini",
-    temperature: 0,
-    timeout: 500000,
-    callbacks: [tracer],
+  // If you specifically need gpt-4o-mini for translation or other tasks, create it here too
+  // Also remove temperature from here just in case this deployment has the same limitation
+  const translationLlm = new ChatOpenAI({
+      azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
+      azureOpenAIApiVersion: config.OPENAI_API_VERSION, // Use appropriate version for mini
+      azureOpenAIApiInstanceName: OPENAI_API_BASE,
+      azureOpenAIApiDeploymentName: "gpt-4o-mini", // Use the mini deployment
+      // temperature: 0, // <--- REMOVE THIS LINE TOO
+      timeout: 500000,
+      callbacks: callbacks,
   });
 
-  const azureo1 = new ChatOpenAI({
-    azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
-    azureOpenAIApiVersion: OPENAI_API_VERSION_O1,
-    azureOpenAIApiInstanceName: OPENAI_API_BASE,
-    azureOpenAIApiDeploymentName: "o1",
-    timeout: 500000,
-    callbacks: [tracer],
-  });
-  
-  return { azuregpt4mini, azureo1 };
+
+
+    return { llm, translationLlm }; // Return the primary model used for generation/extraction
 }
 
-function extractAndParse(summaryText) {
-  // Step 1: Extract Text using Regular Expressions
-  const matches = summaryText.match(/<output>(.*?)<\/output>/s);
-  if (!matches) {
-    console.warn("No matches found in <output> tags.");
-    return "[]";
-  }
+// --- Core LLM Interaction Functions ---
 
-  // Assuming the content in <output> is JSON
-  try {
-    // Step 2: Convert Extracted Text to JSON
-    const extractedJson = JSON.parse(matches[1]);  // Considering only the first match
-    return JSON.stringify(extractedJson);
-  } catch (error) {
-    console.warn("Invalid JSON format in <output> tags.");
-    return "Invalid JSON format";
-  }
-}
+/**
+ * Executes a prompt expecting a structured text response.
+ * @param {string} userId - Identifier for the user requesting the generation.
+ * @param {string} systemPrompt - The system message content.
+ * @param {string} userPrompt - The user message content (the core task instructions).
+ * @returns {Promise<string>} The raw text response from the LLM.
+ * @throws {Error} If the LLM call fails after retries.
+ */
+async function generateStructuredText(userId, systemPrompt, userPrompt) {
+    const projectName = `GenText - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
+    const { llm } = createModels(projectName); // Use the primary LLM
 
-function createHtmlTemplate(htmlContent, jsonContent) {
-  // Based on the JSON variables, we will edit the htmlContent and return the new html
-  // Each variable will control some part of the htmlContent
-  /* Example of JSON vars:
-    {
-    "genetic_technique": "<WGS, Exome, Panel>",   # Based on this var, we will add a div explaining the genetic technique used
-    "pathogenic_variants": "<true, false>", # Based on this var, we will add a div explaining if the patient has pathogenic variants or not and what does it means
-    "pathogenic_variants_list":[ 
-      {
-        "variant": "<variant1>",
-        "date": "<YYYY-MM-DD>"
-      },
-      {
-        "variant": "<variant2>",
-        "date": "<YYYY-MM-DD>"
-      }
-    ],
-    "genetic_heritage": "<autosomalDominant, autosomalRecessive, XLinkedDominant, XLinkedRecessive, YLinked, mitochondrial>", # Based on this var, we will add a div explaining the genetic heritage of the patient and a photo of the inheritance
-    "paternal_tests_confirmation": "<true, false>" # Based on this var, we will add a div explaining if the patient parents has to be tested for the same genetic variants
-    }
-    Example of base htmlContent:
-    <html>
-    <div title="Intro">
-      <p>This is a summary of the patient.</p>
-    </div>
-    <genetic_technique>
-    <div title="Genetic">
-      <p>This is a summary of the patient's genetic information.</p>
-    </div>
-    <pathogenic_variants>
-    <heritage>
-    <paternal_tests_confirmation>
-    <div title="Others">
-      <p>This includes any other information about the patient.</p>
-    </div>
-    </html>
-  */
-    
-  // Step 1: Convert JSON to Object
-  const jsonObject = JSON.parse(jsonContent);
-  // We will load a JSON with the generic information templates
-  const genericTemplates = require('./generic_templates.json');
+    const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(systemPrompt);
+    const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate("{task}");
+    const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
 
-  // Step 2: Add the new divs to the htmlContent based on the jsonObject
-  if (jsonObject.genetic_technique) {
-    const geneticTechnique = genericTemplates.genetic_technique[jsonObject.genetic_technique];
-    htmlContent = htmlContent.replace(/<EMPTY_genetic_technique>/g, `<div title="Genetic Technique">${geneticTechnique}</div><br/>`);
-  }
-
-  if (jsonObject.pathogenic_variants) {
-    const pathogenicVariants = genericTemplates.pathogenic_variants[jsonObject.pathogenic_variants];
-      htmlContent = htmlContent.replace(/<EMPTY_pathogenic_variants>/g, `<div title="Pathogenic Variants">${pathogenicVariants}</div><br/>`);
-  }
-
-  if (jsonObject.genetic_heritage) {
-    const geneticHeritage = genericTemplates.genetic_heritage[jsonObject.genetic_heritage];
-    htmlContent = htmlContent.replace(/<EMPTY_heritage>/g, `<div title="Genetic Heritage">${geneticHeritage}</div><br/>`);
-  } 
-
-  if (jsonObject.paternal_tests_confirmation) {
-    const paternalTestsConfirmation = genericTemplates.paternal_tests_confirmation[jsonObject.paternal_tests_confirmation];
-    htmlContent = htmlContent.replace(/<EMPTY_paternal_tests_confirmation>/g, `<div title="Paternal Tests Confirmation">${paternalTestsConfirmation}</div><br/>`);
-  }
-
-  // Step 3: Return the new htmlContent
-  console.log(htmlContent);
-
-  return [htmlContent, jsonObject.pathogenic_variants_list];
-}
-
-function extractAndParseGene(summaryText) {
-  // Step 1: Extract Text using Regular Expressions
-  const matchHtml = summaryText.match(/<html>(.*?)<\/html>/s);
-  const matches = summaryText.match(/<output>(.*?)<\/output>/s);
-  if (!matchHtml) {
-    console.warn("No matches found in <html> tags.");
-    return "[]";
-  }
-
-  if (!matches) {
-    console.warn("No matches found in <output> tags.");
-    return "[]";
-  }
-
-  // Assuming the content in <output> is JSON
-  try {
-    // Step 2: Convert Extracted Text to JSON
-    const extractedHtml = matchHtml[1];  // Considering only the first match
-    const extractedJson = JSON.parse(matches[1]);  // Considering only the first match
-    return [extractedHtml, JSON.stringify(extractedJson)];
-  } catch (error) {
-    console.warn("Invalid JSON format in <output> tags.");
-    return "Invalid JSON format";
-  }
-}
-
-// This function will be a basic conversation with documents (context)
-// This will take some history of the conversation if any and the current documents if any
-// And will return a proper answer to the question based on the conversation and the documents 
-async function navigator_summarize(userId, question, context, timeline, gene){
-  return new Promise(async function (resolve, reject) {
-    try {
-      // Create the models
-      const projectName = `LITE - ${config.LANGSMITH_PROJECT} - ${userId}`;
-      let { azureo1 } = createModels(projectName);
-  
-      // Format and call the prompt
-      let cleanPatientInfo = "";
-      let i = 1;
-      for (const doc of context) {
-        let docText = JSON.stringify(doc);
-        cleanPatientInfo += "<Complete Document " + i + ">\n" + docText + "</Complete Document " + i + ">\n";
-        i++;
-      }
-      
-      cleanPatientInfo = cleanPatientInfo.replace(/{/g, '{{').replace(/}/g, '}}');
-
-      const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
-        `This is the list of the medical information of the patient:
-  
-        ${cleanPatientInfo}
-  
-        You are a medical expert, based on this context with the medical documents from the patient.`
-      );
-  
-      let humanMessagePrompt;
-      if (timeline) {
-        humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
-          `Take a deep breath and work on this problem step-by-step.      
-          Please, answer the following question/task with the information you have in context:
-
-          <input>
-          {input}
-          </input>
-          
-          Don't make up any information.
-          Your response should:
-          - Be formatted in simple, single-line JSON.
-          - Exclude escape characters like '\\n' within JSON elements.
-          - Avoid unnecessary characters around formatting such as triple quotes around HTML.
-          - Be patient-friendly, minimizing medical jargon.
-          - Use ISO 8601 date format for dates (YYYY-MM-DD), if no day is available, use the first day of the month (YYYY-MM-01).
-          
-          Example of desired JSON format (this is just a formatting example, not related to the input):
-          
-          <output>
-          [
-              {{
-                  "date": "<YYYY-MM-DD>",
-                  "eventType": "<only one of: diagnosis, treatment, test, future_medical_appointment, important_life_event>",
-                  "keyMedicalEvent": "<small description>"
-              }},
-              {{
-                  "date": "<YYYY-MM-DD>",
-                  "eventType": "<only one of: diagnosis, treatment, test, future_medical_appointment, important_life_event>",
-                  "keyMedicalEvent": "<small description>"
-              }},
-          ]
-          </output>
-          
-          Always use the <output> tag to encapsulate the JSON response.`
-        );
-      } else if (gene) {
-        humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
-          `Take a deep breath and work on this problem step-by-step.      
-          Please, answer the following question/task with the information you have in context:
-
-          <input>
-          {input}
-          </input>
-          
-          Don't make up any information.
-          Your response should:
-          - Be formatted in simple, single-line HTML without line breaks inside elements.
-          - Exclude escape characters like '\\n' within HTML elements.
-          - Avoid unnecessary characters around formatting such as triple quotes around HTML.
-          - Be patient-friendly, minimizing medical jargon.
-          - Add an extra <output> tag to encapsulate the extra JSON response with the booleans and categorie variables.
-          
-          Example of desired HTML format (this is just a formatting example, REMEMBER TO ADD THE XML TAGS ALWAYS):
-          
-          <html>
-          <div title="Intro">
-            <h3>Report Introduction</h3>
-            <p>This is a summary of the patient and the report introduction.</p>
-          </div>
-          <EMPTY_genetic_technique> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
-          <div title="Genetic">
-            <h3>Genetic Information</h3>
-            <p>This is a summary of the genetic information results from the analysis.</p>
-          </div>
-          <EMPTY_pathogenic_variants> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
-          <EMPTY_heritage> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
-          <EMPTY_paternal_tests_confirmation> // Add this EMPTY ALONE XML tag ALWAYS with nothing more
-          <div title="Others">
-            <h3>Other Information</h3>
-            <p>This includes any other information about the patient.</p>
-          </div>
-          </html>
-          
-          <output>
-          {{
-              "genetic_technique": "<WGS, Exome, Panel>",
-              "pathogenic_variants": "<true, false>", # Only truly pathogenic variants exclude likely pathogenic etc
-              "pathogenic_variants_list":[ # Only truly pathogenic variants exclude likely pathogenic etc
-                {{
-                  "variant": "<variant1>",
-                  "date": "<YYYY-MM-DD>"
-                }},
-                {{
-                  "variant": "<variant2>",
-                  "date": "<YYYY-MM-DD>"
-                }}
-              ],
-              "genetic_heritage": "<autosomalDominant, autosomalRecessive, XLinkedDominant, XLinkedRecessive, YLinked, mitochondrial>",
-              "paternal_tests_confirmation": "<true, false>"
-          }}
-          </output>
-          
-          Always use the <output> tag to encapsulate the JSON response.`
-        );
-      }
-  
-      const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
-  
-      const chain = new LLMChain({
+    const chain = new LLMChain({
         prompt: chatPrompt,
-        llm: azureo1,
-      });
+        llm: llm,
+    });
 
-      const chain_retry = chain.withRetry({
-        stopAfterAttempt: 3,
-      });
+    // Add retry logic similar to the original
+    const chain_retry = chain.withRetry({ stopAfterAttempt: 3 });
 
-      
-      let response;
-      try {
-        response = await chain_retry.invoke({
-          input: question,
-        });
-      } catch (error) {
-        if (error.message.includes('Error 429')) {
-          console.log("Rate limit exceeded, waiting and retrying...");
-          await new Promise(resolve => setTimeout(resolve, 20000)); // Wait for 20 seconds
-          response = await chain_retry.invoke({
-            input: question,
-          });
-        } else {
-          throw error;
+    console.log(`[LangchainService] Executing generateStructuredText for User: ${userId}`);
+    try {
+        const response = await chain_retry.invoke({ task: userPrompt });
+        if (!response || typeof response.text !== 'string') {
+             throw new Error("Invalid response structure from LLM chain.");
         }
-      }
-
-      console.log(response);
-
-      if (timeline) {
-        response.text = extractAndParse(response.text);
-      } else if (gene) {
-        parts = extractAndParseGene(response.text);
-        formattedParts = createHtmlTemplate(parts[0], parts[1]);
-        response.text = formattedParts[0];
-        response.json = formattedParts[1];
-      }
-
-      resolve(response);
+        console.log(`[LangchainService] generateStructuredText successful for User: ${userId}`);
+        return response.text;
     } catch (error) {
-      console.log("Error happened: ", error)
-      insights.error(error);
-      var respu = {
-        "msg": error,
-        "status": 500
-      }
-      resolve(respu);
+        console.error(`[LangchainService] Error in generateStructuredText for User ${userId}:`, error);
+        insights.error(error); // Log error
+        // Re-throw a more specific error or handle rate limits
+        if (error.message && error.message.includes('429')) {
+             console.warn("[LangchainService] Rate limit likely exceeded. Consider adding delay/backoff.");
+             // You might implement a delay here before throwing, but retries handle some cases
+             throw new Error(`Rate limit exceeded during text generation: ${error.message}`);
+        }
+        throw new Error(`Failed to generate structured text: ${error.message || error}`);
     }
-  });
 }
 
-async function translateSummary(lang, text) {
-  return new Promise(async function (resolve, reject) {
-    try {
-      // Create the models
-      const projectName = `TRANSLATE - ${config.LANGSMITH_PROJECT}`;
-      let { azuregpt4mini } = createModels(projectName); // Ajusta esto si necesitas otros modelos
+/**
+ * Executes a prompt specifically designed to return *only* a valid JSON object or array.
+ * Attempts to parse the response.
+ * @param {string} userId - Identifier for the user requesting the extraction.
+ * @param {string} systemPrompt - The system message content.
+ * @param {string} userPrompt - The user message content, instructing the LLM to return *only* JSON.
+ * @returns {Promise<object|array>} The parsed JSON object or array.
+ * @throws {Error} If the LLM call fails, returns non-JSON, or JSON parsing fails.
+ */
+async function extractJson(userId, systemPrompt, userPrompt) {
+    const projectName = `ExtractJSON - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
+    const { llm } = createModels(projectName); // Use the primary LLM
 
-      // Format and call the prompt
-      const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
-        `You are an expert translator. Your task is to translate the given text into the specified language.`
-      );
+    const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(systemPrompt);
+    const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate("{task}");
+    const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
 
-      const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
-        `Translate the following text into {input_language}:
-
-        {input_text}
-
-        The translation should be clear, accurate, and patient-friendly. Avoid unnecessary medical jargon and ensure the translation is understandable for patients and their families.
-
-        Provide the translation only in the HTML format as follows:
-        <div><h3>Title</h3><p>Translation goes here.</p></div>`
-      );
-
-      const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
-
-      const chain = new LLMChain({
+    const chain = new LLMChain({
         prompt: chatPrompt,
-        llm: azuregpt4mini,
-      });
+        llm: llm,
+    });
 
-      const chain_retry = chain.withRetry({
-        stopAfterAttempt: 3,
-      });
+    const chain_retry = chain.withRetry({ stopAfterAttempt: 3 });
 
-      let response;
-      try {
-        response = await chain_retry.invoke({
-          input_language: lang,
-          input_text: text,
-        });
-      } catch (error) {
-        if (error.message.includes('Error 429')) {
-          console.log("Rate limit exceeded, waiting and retrying...");
-          await new Promise(resolve => setTimeout(resolve, 20000)); // Wait for 20 seconds
-          response = await chain_retry.invoke({
+    console.log(`[LangchainService] Executing extractJson for User: ${userId}`);
+    try {
+        const response = await chain_retry.invoke({ task: userPrompt });
+        if (!response || typeof response.text !== 'string') {
+            throw new Error("Invalid response structure from LLM chain.");
+        }
+
+        const rawText = response.text.trim();
+        // Basic check if it looks like JSON before attempting parse
+        if ((!rawText.startsWith('{') || !rawText.endsWith('}')) && (!rawText.startsWith('[') || !rawText.endsWith(']'))) {
+             console.warn(`[LangchainService] LLM response for JSON extraction doesn't start/end with {} or []. Raw: ${rawText.substring(0, 100)}...`);
+             // Sometimes LLMs add ```json ... ```, try to strip it
+             const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
+             if (jsonMatch && jsonMatch[1]) {
+                 console.log("[LangchainService] Stripped markdown fence from JSON response.");
+                 return JSON.parse(jsonMatch[1].trim());
+             }
+             throw new Error("LLM response does not appear to be valid JSON (missing braces/brackets).");
+        }
+
+        // Attempt to parse
+        const parsedJson = JSON.parse(rawText);
+        console.log(`[LangchainService] extractJson successful and parsed for User: ${userId}`);
+        return parsedJson;
+
+    } catch (error) {
+        console.error(`[LangchainService] Error in extractJson for User ${userId}:`, error);
+        insights.error(error); // Log error
+         if (error instanceof SyntaxError) {
+             console.error("[LangchainService] JSON Parsing failed. Raw response:", response?.text);
+             throw new Error(`Failed to parse JSON response from LLM: ${error.message}`);
+         }
+        if (error.message && error.message.includes('429')) {
+            console.warn("[LangchainService] Rate limit likely exceeded during JSON extraction.");
+            throw new Error(`Rate limit exceeded during JSON extraction: ${error.message}`);
+        }
+        throw new Error(`Failed to extract JSON: ${error.message || error}`);
+    }
+}
+
+/**
+ * Translates text to a specified language using an LLM.
+ * @param {string} lang - Target language code (e.g., 'es', 'en').
+ * @param {string} text - The text to translate.
+ * @param {string} userId - Identifier for logging/tracing purposes (optional).
+ * @returns {Promise<string>} The translated text.
+ * @throws {Error} If the translation fails.
+ */
+async function translateText(lang, text, userId = 'anonymous') {
+    const projectName = `Translate - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
+    // Use the specific translation model if defined, otherwise fallback to primary
+    const { translationLlm, llm } = createModels(projectName);
+    const modelToUse = translationLlm || llm;
+
+    const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
+        `You are an expert translator specializing in medical and genetic information. Your task is to translate the provided text accurately and clearly into the target language, ensuring it remains patient-friendly and avoids overly technical jargon where possible.`
+    );
+
+    // Note: The original prompt requested specific HTML structure. Removing that to keep this function general.
+    // The caller (e.g., frontend or another service) should handle presentation.
+    const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
+        `Translate the following text into **{input_language}**. Return ONLY the translated text, without any explanations, introductions, or formatting like HTML tags unless they were part of the original text.
+
+Text to Translate:
+\`\`\`
+{input_text}
+\`\`\`
+
+Target Language: {input_language}`
+    );
+
+    const chatPrompt = ChatPromptTemplate.fromMessages([systemMessagePrompt, humanMessagePrompt]);
+
+    const chain = new LLMChain({
+        prompt: chatPrompt,
+        llm: modelToUse,
+    });
+
+    const chain_retry = chain.withRetry({ stopAfterAttempt: 3 });
+
+    console.log(`[LangchainService] Executing translateText to ${lang} for User: ${userId}`);
+    try {
+        const response = await chain_retry.invoke({
             input_language: lang,
             input_text: text,
-          });
-        } else {
-          throw error;
-        }
-      }
-
-      resolve(response);
+        });
+         if (!response || typeof response.text !== 'string') {
+             throw new Error("Invalid response structure from LLM chain during translation.");
+         }
+        console.log(`[LangchainService] translateText to ${lang} successful for User: ${userId}`);
+        // Return the clean text
+        return response.text.trim();
     } catch (error) {
-      console.log("Error happened: ", error)
-      insights.error(error);
-      var respu = {
-        "msg": error,
-        "status": 500
-      }
-      resolve(respu);
+        console.error(`[LangchainService] Error in translateText to ${lang} for User ${userId}:`, error);
+        insights.error(error);
+        if (error.message && error.message.includes('429')) {
+            console.warn("[LangchainService] Rate limit likely exceeded during translation.");
+            throw new Error(`Rate limit exceeded during translation: ${error.message}`);
+        }
+        throw new Error(`Failed to translate text: ${error.message || error}`);
     }
-  });
 }
 
 module.exports = {
-  navigator_summarize,
-  translateSummary
+    generateStructuredText,
+    extractJson,
+    translateText,
+    // Note: We export specific functions, not the overloaded navigator_summarize
 };

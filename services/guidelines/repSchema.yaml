@@ -1,0 +1,226 @@
+# Schema describing the structure and expected content of the Official Genetic Report (WES/CES)
+# Source: Description provided by the user.
+report_schema:
+  Header:
+    id: Header
+    purpose: Institutional identification and contact.
+    content_description: Institutional logos (e.g., SJD), service name, address, phone, email.
+    format: Standard header.
+    key_data_points:
+      - institution_name
+      - service_name
+      - address
+      - contact_info
+
+  Report_Title:
+    id: Report_Title
+    purpose: Specifies the type of test performed.
+    content_description: Title such as "MASSIVE SEQUENCING REPORT - WES" or "MASSIVE SEQUENCING REPORT - CES".
+    format: Large centered title.
+    key_data_points:
+      - test_type (WES/CES)
+
+  Patient_Sample_Info_Block:
+    id: Patient_Sample_Info_Block
+    purpose: Unique identification of patient, sample and analysis.
+    format: Two-column layout (label: value).
+    key_data_points:
+      - patient_name: string
+      - gender: string (Male/Female)
+      - sample_code: string (Unique sample ID)
+      - sample_extraction_date: date
+      - study_request_date: date
+      - mother_info: string (Optional)
+      - father_info: string (Optional)
+      - analysis_code: string (Unique analysis ID)
+      - nhc: string (Clinical History Number)
+      - date_of_birth: date
+      - sample_type: string (e.g., DNA from Peripheral Blood)
+
+  Reason_for_Consultation:
+    id: Reason_for_Consultation
+    purpose: Clinical context and reason for the study.
+    format: Labeled sections with narrative text.
+    key_data_points:
+      - indication_for_study:
+          description: Clinical reason, diagnostic suspicion, specific genes or HPOs mentioned.
+          type: narrative_text
+      - requesting_clinician_info:
+          description: Requesting department or service.
+          type: string
+
+  Phenotype:
+    id: Phenotype
+    purpose: Standardized description of clinical characteristics.
+    format: List of HPO terms (code: description).
+    key_data_points:
+      - hpo_terms:
+          type: list
+          item_format: "HP:XXXXXXX Term_Description"
+
+  Results:
+    id: Results
+    purpose: High-level summary of main findings.
+    content_description: >
+      May directly declare an explanatory P/LP finding (e.g., "a variant is identified..."),
+      refer to Annex I for details (e.g., "findings detailed in Annex I"),
+      or indicate absence of relevant findings (e.g., "no variants identified...", "no findings of interest").
+    format: Narrative text. Occasionally simple table.
+    key_data_points:
+      - summary_finding: string
+      - references_annex_i: boolean
+
+  Interpretation:
+    id: Interpretation
+    purpose: Explanation of the meaning of specific reported variants (if any in this section or referenced from Annex I/Conclusions).
+    content_description: Variant details (gene, coordinates, transcript, cDNA, protein), evidence (databases, literature, ACMG/AMP criteria), relationship with clinical presentation.
+    format: Technical narrative text.
+    key_data_points:
+      - variant_details: (if applicable)
+          - gene: string
+          - genomic_location: string
+          - transcript: string
+          - cdna_change: string
+          - protein_change: string
+          - classification: string (Pathogenic/Likely Pathogenic/VUS)
+          - evidence_summary: narrative_text (db frequencies, ClinVar, literature, ACMG codes)
+
+  Conclusions:
+    id: Conclusions
+    purpose: Final diagnostic interpretation in clinical context.
+    content_description: States whether a genetic cause (P/LP variant) was found that explains the phenotype. Reiterates the key finding if there was one. May explicitly mention whether a genetic diagnosis is offered or not.
+    format: Narrative text.
+    key_data_points:
+      - diagnostic_statement: string (e.g., "confirms genetic diagnosis", "no genetic cause identified")
+      - key_finding_reiteration: string (optional)
+
+  Recommendations:
+    id: Recommendations
+    purpose: Guidance on next clinical or laboratory steps.
+    content_description: Suggestions such as genetic counseling (GC), family studies (segregation), future re-analysis, contact with the laboratory, other tests.
+    format: Narrative text, often standardized.
+    key_data_points:
+      - genetic_counseling_recommendation: boolean
+      - family_studies_recommendation: boolean
+      - contact_lab_info: boolean
+      - future_reanalysis_suggestion: boolean
+      - other_test_recommendations: list
+
+  Validation:
+    id: Validation
+    purpose: Official dates of signature and report generation.
+    format: Labeled dates.
+    key_data_points:
+      - electronic_signature_date: date
+      - report_creation_date: date
+
+  Methodology:
+    id: Methodology
+    purpose: Technical description of laboratory and bioinformatic process.
+    content_description: Sequencing type (NGS), enrichment kit, instrument, regions analyzed, reference genome (e.g., GRCh37/hg19), bioinformatic pipeline, analysis software (e.g., Alissa Interpret), coverage metrics (e.g., >20x).
+    format: Paragraph(s) of technical narrative text.
+    key_data_points:
+      - sequencing_type: string (NGS)
+      - platform: string (e.g., Illumina NovaSeq)
+      - enrichment_kit: string
+      - regions_analyzed: string (e.g., coding + flanking)
+      - reference_genome: string
+      - bioinformatics_pipeline_summary: narrative_text
+      - analysis_software: string
+      - coverage_target: string
+
+  Limitations:
+    id: Limitations
+    purpose: Informs about what the test might not detect.
+    content_description: Inherent limitations (incomplete coverage, types of variants not detectable - SVs, repeats, deep introns), possible need for validation.
+    format: Narrative text.
+    key_data_points:
+      - coverage_limitations: boolean
+      - variant_type_limitations: boolean (e.g., structural, regulatory, repeat expansions)
+
+  Reporting_Criteria:
+    id: Reporting_Criteria
+    purpose: Defines the rules for variant classification and reporting.
+    content_description: Reference to ACMG/AMP guidelines, types of variants reported (P, LP), criteria for VUS (generally only if they fit phenotype/inheritance), secondary/incidental findings policy (reference to ACMG SF list), consultation with clinician if necessary.
+    format: Narrative text with references.
+    key_data_points:
+      - classification_guidelines: string (e.g., ACMG/AMP [1,2])
+      - reported_variant_classes: list (e.g., Pathogenic, Likely Pathogenic, VUS under conditions)
+      - secondary_findings_policy: string (e.g., based on ACMG SF list [3])
+
+  Analysis_Details:
+    id: Single_patient_analysis_Details
+    purpose: Metadata of the specific instance of bioinformatic analysis.
+    format: Key-value pairs.
+    key_data_points:
+      - domain: string
+      - analysis_creation_date: date
+      - target_panels: list (e.g., "HPO", "Ehlers-Danlos-Syndrome")
+      - classification_tree: string
+      - genome_build: string (e.g., GRCh37.p13)
+
+  Annotation_Sources:
+    id: Annotation_Sources
+    purpose: List of databases and tools used for interpretation.
+    format: List (Tool/DB Name, Version/Date).
+    key_data_points:
+      - annotation_resources:
+          type: list
+          item_format: "Resource Name (Version/Date)"
+          examples: [ClinVar, HGMD Pro, gnomAD, OMIM, dbSNP, CADD, Mastermind, CGDS_GENE]
+
+  Data_Protection:
+    id: Data_Protection
+    purpose: Legal notice about data privacy.
+    content_description: Standard legal text on data use and patient rights.
+    format: Standardized legal text.
+
+  References:
+    id: References
+    purpose: Citations of mentioned guidelines (ACMG/AMP, ACMG SF).
+    format: Numbered list of citations.
+    key_data_points:
+      - citation_list: list
+
+  Annex_I_Other_Findings:
+    id: Annex_I
+    purpose: Detailed list of relevant genetic variants identified (may include P, LP, relevant VUS). Could contain the primary finding if not summarized on page 1.
+    format: Table optionally followed by interpretive text for specific variants.
+    content:
+      variant_table:
+        columns: [Gene, Location, Transcript, CDNA, Protein, Genotype, Depth, Classification (Implicit or explicit)] # Classification may be here or in attached text/Interpretation
+        rows: list of variants
+      interpretation_notes: narrative_text (optional, below table or linked to specific variants)
+
+  Secondary_Findings:
+    id: Secondary_Findings
+    purpose: Report of medically actionable incidental findings.
+    content_description: List P/LP findings according to laboratory policy (e.g., ACMG SF list) or states "No findings". May include variant details here or reference Annex I/Interpretation.
+    format: Narrative text, potentially listing variants.
+    key_data_points:
+      - findings_list: list or string ("No findings")
+      - variant_details: (if findings present) list of [Gene, Variant, Genotype, Classification]
+
+  Annex_II_Genes_Analyzed:
+    id: Annex_II
+    purpose: Defines the scope of analysis in terms of genes covered.
+    content_description: List of analyzed genes (based on panel, HPOs, or all for WES/CES). May be categorized.
+    format: List of gene names.
+    key_data_points:
+      - gene_list: list or categorized list
+
+  Annex_III_Low_Coverage_Genes:
+    id: Annex_III
+    purpose: Identifies genes with suboptimal coverage.
+    content_description: Lists genes with coverage < threshold (e.g., 80% at 20X) or states that all relevant genes have adequate coverage.
+    format: List of gene names or statement of adequate coverage.
+    key_data_points:
+      - low_coverage_gene_list: list or string ("Adequate coverage")
+
+  Footer:
+    id: Footer
+    purpose: Report identification and pagination.
+    format: Standard footer text.
+    key_data_points:
+      - report_identifier: string
+      - page_number: string (Page X of Y)

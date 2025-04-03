@@ -1,88 +1,103 @@
-// file that contains the routes of the api
+// backend/index.js
 'use strict'
 
 const express = require('express')
-
-const langCtrl = require('../controllers/all/lang')
-
-const translationCtrl = require('../services/translation')
-const bookServiceCtrl2 = require('../services/books')
-const docsCtrl = require('../controllers/user/patient/documents')
 const cors = require('cors');
+const config= require('../config') // Ensure config is correctly imported
+
+// --- Controller/Service Imports ---
+const langCtrl = require('../controllers/all/lang')
+const docsCtrl = require('../controllers/user/patient/documents') // Assuming this handles upload logic now separate from summary
+const summaryServiceCtrl = require('../services/summary')        // Import the summary service
+const translationCtrl = require('../services/translation')
 const serviceEmail = require('../services/email')
 
+// --- Express App Setup ---
 const api = express.Router()
-const config= require('../config')
 const myApiKey = config.Server_Key;
-// Lista de dominios permitidos
 const whitelist = config.allowedOrigins;
 
-  // Middleware personalizado para CORS
-  function corsWithOptions(req, res, next) {
-    const corsOptions = {
-      origin: function (origin, callback) {
-        console.log(origin);
-        if (whitelist.includes(origin)) {
-          callback(null, true);
-        } else {
-            // La IP del cliente
-            const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-            const requestInfo = {
-                method: req.method,
-                url: req.url,
-                headers: req.headers,
-                origin: origin,
-                body: req.body, // Asegúrate de que el middleware para parsear el cuerpo ya haya sido usado
-                ip: clientIp,
-                params: req.params,
-                query: req.query,
-              };
-            serviceEmail.sendMailControlCall(requestInfo)
-            callback(new Error('Not allowed by CORS'));
-        }
-      },
-    };
-  
-    cors(corsOptions)(req, res, next);
-  }
+// --- Middleware Definitions ---
 
-  const checkApiKey = (req, res, next) => {
-    // Permitir explícitamente solicitudes de tipo OPTIONS para el "preflight" de CORS
-    if (req.method === 'OPTIONS') {
-      return next();
-    } else {
-      const apiKey = req.get('x-api-key');
-      if (apiKey && apiKey === myApiKey) {
-        return next();
+// Custom CORS middleware
+function corsWithOptions(req, res, next) {
+  const corsOptions = {
+    origin: function (origin, callback) {
+      // console.log('Request Origin:', origin); // Debugging log
+      // Allow requests with no origin (like server-to-server, Postman, curl) OR if origin is in whitelist
+      if (!origin || whitelist.includes(origin)) {
+        callback(null, true);
       } else {
-        return res.status(401).json({ error: 'API Key no válida o ausente' });
+        // Log blocked request details
+        const clientIp = req.headers['x-forwarded-for'] || req.connection?.remoteAddress; // Use optional chaining for remoteAddress
+        const requestInfo = {
+            method: req.method,
+            url: req.url,
+            headers: req.headers,
+            origin: origin || 'N/A',
+            body: req.body, // Be cautious logging full bodies in production
+            ip: clientIp || 'N/A',
+            params: req.params,
+            query: req.query,
+          };
+        console.warn(`CORS rejection for origin: ${origin}. Request details logged.`); // Log warning
+        serviceEmail.sendMailControlCall(requestInfo); // Optionally notify admin
+        callback(new Error(`Origin ${origin} not allowed by CORS`)); // Provide origin in error
       }
-    }
+    },
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS", // Explicitly allow methods
+    allowedHeaders: "Content-Type, Authorization, X-Requested-With, Accept, x-api-key", // Include x-api-key
+    credentials: true, // If you use cookies or authorization headers
+    optionsSuccessStatus: 204 // For preflight requests
   };
 
-// lang routes, using the controller lang, this controller has methods
-api.get('/langs/',  langCtrl.getLangs)
+  cors(corsOptions)(req, res, next);
+}
+
+// API Key Check Middleware
+const checkApiKey = (req, res, next) => {
+  // Allow OPTIONS requests for CORS preflight without API key check
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
+  const apiKey = req.get('x-api-key');
+  if (apiKey && apiKey === myApiKey) {
+    return next(); // API key is valid, proceed
+  } else {
+    console.warn(`Unauthorized access attempt: Missing or invalid API Key. IP: ${req.ip}`); // Log attempt
+    return res.status(401).json({ error: 'Unauthorized: Invalid or missing API Key' }); // Send clear error
+  }
+};
+
+// --- Route Definitions ---
+
+// Apply CORS and API Key middleware globally or per route as needed
+// Using it per route group here for clarity
+api.use(corsWithOptions); // Apply CORS first
+// Note: If express.json() middleware isn't applied globally before this router, add it here:
+// api.use(express.json());
 
 
-// documentsCtrl routes, using the controller documents, this controller has methods
+// Language endpoints (Assumed public or handled differently - check if API key is needed)
+api.get('/langs/', langCtrl.getLangs); // Does this need checkApiKey?
 
-api.post('/upload', corsWithOptions, checkApiKey, docsCtrl.uploadFile)
-api.post('/callsummary', corsWithOptions, checkApiKey, bookServiceCtrl2.callSummary)
+// Document handling endpoints (Require API Key)
+api.post('/upload', checkApiKey, docsCtrl.uploadFile); // Apply checkApiKey here
+api.post('/callsummary', checkApiKey, summaryServiceCtrl.callSummary); // Apply checkApiKey here
 
-//translations
-api.post('/getDetectLanguage', corsWithOptions, checkApiKey, translationCtrl.getDetectLanguage)
-api.post('/translation', corsWithOptions, checkApiKey, translationCtrl.getTranslationDictionary)
-api.post('/translationinvert', corsWithOptions, checkApiKey, translationCtrl.getTranslationDictionaryInvert)
-api.post('/translationinvertarray', corsWithOptions, checkApiKey, translationCtrl.getTranslationDictionaryInvert2)
-api.post('/deepltranslationinvert', corsWithOptions, checkApiKey, translationCtrl.getdeeplTranslationDictionaryInvert)
-api.post('/translation/segments', corsWithOptions, checkApiKey, translationCtrl.getTranslationSegments)
-api.post('/translation/ia', corsWithOptions, checkApiKey, translationCtrl.getTranslationIA)
+// Translation endpoints (Require API Key)
+api.post('/getDetectLanguage', checkApiKey, translationCtrl.getDetectLanguage);
+api.post('/translation', checkApiKey, translationCtrl.getTranslationDictionary);
+api.post('/translationinvert', checkApiKey, translationCtrl.getTranslationDictionaryInvert);
+api.post('/translationinvertarray', checkApiKey, translationCtrl.getTranslationDictionaryInvert2);
+api.post('/deepltranslationinvert', checkApiKey, translationCtrl.getdeeplTranslationDictionaryInvert);
+api.post('/translation/segments', checkApiKey, translationCtrl.getTranslationSegments);
+api.post('/translation/ia', checkApiKey, translationCtrl.getTranslationIA);
 
+// Private test route (Example - might need auth/API key)
+api.get('/private', checkApiKey, (req, res) => { // Added checkApiKey for consistency
+	res.status(200).send({ message: 'You have access' });
+});
 
-
-//ruta privada
-api.get('/private', (req, res) => {
-	res.status(200).send({ message: 'You have access' })
-})
-
-module.exports = api
+module.exports = api;

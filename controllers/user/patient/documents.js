@@ -1,6 +1,6 @@
 'use strict'
 
-const bookService = require("../../../services/books")
+const recognizerService = require("../../../services/recognizer")
 const insights = require('../../../services/insights')
 const f29azureService = require("../../../services/f29azure")
 const path = require('path');
@@ -14,8 +14,7 @@ async function uploadFile(req, res) {
 			console.log(req.body.docId)
 			console.log(req.body.url)
 			console.log(filename)
-			var result = await bookService.form_recognizer(req.body.userId, req.body.docId, containerName, req.body.url)
-			// var result = await bookService.createBook(req.body.docId, containerName, req.body.url, filename);
+			var result = await recognizerService.form_recognizer(req.body.userId, req.body.docId, containerName, req.body.url)
 			res.status(200).send(result)
 		}
 	} else {
@@ -24,6 +23,11 @@ async function uploadFile(req, res) {
 	}
 
 }
+
+
+
+
+
 
 async function saveBlob(containerName, url, thumbnail) {
 	return new Promise(async function (resolve, reject) {
