@@ -119,6 +119,7 @@ ${genRulesContent}
 1. The simplified report HTML MUST **start exactly with the phrase**: ${roleInstructions.startPhrase}. Fill in '[document type]' and '[purpose]' placeholders based on context analysis.
 2. **Strictly follow the structure and logic in genRules.YAML** to build the report section by section.
 3. Clearly mark optional sections that can be omitted if not applicable.
+4. Insert "[IMAGE]" placeholder at the end of the hereditary section when applicable (!important).
 
 **Audience Adaptation:**
 1. **Adapt language, tone, and detail level** for the target audience: **'${role}'**.
