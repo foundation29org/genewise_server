@@ -1,5 +1,5 @@
 # Schema describing the structure and expected content of the Official Genetic Report (WES/CES)
-# Source: Description provided by the user.
+
 report_schema:
   Header:
     id: Header
