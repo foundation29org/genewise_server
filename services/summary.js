@@ -11,14 +11,17 @@ const f29azureService = require("./f29azure"); // Service for Azure Blob operati
 const GUIDELINES_DIR = path.join(__dirname, 'Guidelines');
 const REP_SCHEMA_PATH = path.join(GUIDELINES_DIR, 'repSchema.YAML');
 const GEN_RULES_PATH = path.join(GUIDELINES_DIR, 'genRules.YAML');
+const EASY_READING_PATH = path.join(GUIDELINES_DIR, 'easyReading.YAML');
 
 // --- Load YAML Content (Once at startup) ---
 let repSchemaContent = '';
 let genRulesContent = '';
+let easyReadingContent = '';
 try {
     repSchemaContent = fs.readFileSync(REP_SCHEMA_PATH, 'utf8');
     genRulesContent = fs.readFileSync(GEN_RULES_PATH, 'utf8');
-    console.log("[SummaryService] YAML Guidelines (repSchema, genRules) loaded successfully.");
+    easyReadingContent = fs.readFileSync(EASY_READING_PATH, 'utf8');
+    console.log("[SummaryService] YAML Guidelines (repSchema, genRules, easyReading) loaded successfully.");
 } catch (error) {
     console.error("[SummaryService] FATAL ERROR: Could not load YAML guideline files. Service cannot generate summaries without them.", error);
     process.exit(1); // Exit if essential files are missing
@@ -33,26 +36,41 @@ try {
  * @returns {object} - Object with startPhrase and instructions.
  */
 function getRoleSpecificInstructions(role) {
-    switch (role) {
-        case 'child':
-            return {
-                startPhrase: `<p>"The genetic information you shared is called [document type] and it helps us understand [purpose]"</p>`, // Wrap start phrase in <p>
-                instructions: `Create a simple and engaging explanation using basic HTML. Use clear, age-appropriate language. Structure the explanation logically according to **genRules.YAML**, simplifying content. Use HTML headings (like '<h2>Title</h2>') for main sections and paragraphs ('<p>Text...</p>'). For the glossary, use an unordered list ('<ul><li>Term: Definition</li>...</ul>'). Focus on clarity and reassurance. If no pathogenic variants, explain this simply within a paragraph.`
-            };
-        case 'adolescent':
-            return {
-                startPhrase: `<p>"The genetic information you uploaded is a [document type] and it helps us understand [purpose]"</p>`, // Wrap start phrase in <p>
-                instructions: `Generate a clear explanation suitable for an adolescent using well-structured HTML. Include key information about variants, implications, and conditions. Structure logically following **genRules.YAML**. Use HTML headings ('<h2>Title</h2>', '<h3>Subtitle</h3>'), paragraphs ('<p>Text...</p>'), unordered lists ('<ul><li>Item</li></ul>') for things like glossary or key messages, and bold text ('<strong>important</strong>'). Empower the patient but remain neutral. If no pathogenic variants, explain this within a paragraph.`
-            };
-        case 'adult':
-        default: // Default to 'adult'
-            return {
-                startPhrase: `<p>"The genetic information you uploaded is a [document type] and it helps explain [purpose]"</p>`, // Wrap start phrase in <p>
-                instructions: `Generate a clear, concise explanation for an adult using well-structured HTML. Include essential information on variants, implications, and conditions based on **genRules.YAML**. Use appropriate HTML tags: '<h2>' for main section titles, '<h3>' for subsections (like 3.1, 3.2), '<p>' for text, '<strong>' for emphasis, and '<ul><li>' for lists (especially Glossary and Key Messages). Ensure neutrality and explain limitations if no pathogenic variants are found within a paragraph.`
-            };
-    }
-}
+    const roleInstructionsMap = {
+        child: `
+Audience: **Young child** (around 5–7 years old)
 
+Avoid all medical jargon. Use phrases like "body's instructions" instead of "genes".
+Speak directly to the child using "you" and "your".
+Keep a gentle, calming tone. Avoid anything scary or overly serious.
+Explain only the main ideas, but do not be concise. Take your time to explain everything.
+        `,
+        adolescent: `
+Audience: **Adolescent / Teenager**
+
+Use clear, respectful language. Avoid overwhelming or overly technical phrasing.
+You can introduce key terms (e.g., variant, gene name) but explain them immediately.
+Include key findings if present (e.g., gene, type of variant, relevance to symptoms).
+If no causal variant: explain clearly and acknowledge test limitations.
+Mention possible inheritance only if clearly described in the report.
+        `,
+        adult: `
+Audience: **Adult**
+
+Use precise but accessible language. Assume general health literacy, not genetics expertise.
+Use appropriate genetic terms (e.g., gene name, VUS, autosomal dominant) with short definitions.
+Present key findings accurately (gene, variant, classification, significance).
+Explain inheritance, testing limitations, and possible implications for family if mentioned.
+Maintain an objective, informative tone—empathetic but not emotional.
+        `
+    };
+
+    const roleSpecific = roleInstructionsMap[role] || roleInstructionsMap['adult'];
+
+    return {
+        instructions: `${roleInstructionsMap[role] || roleInstructionsMap['adult']}`
+    };
+}
 
 // --- Main Endpoint Logic ---
 
@@ -86,6 +104,7 @@ You are an expert genetics assistant analyzing patient genetic information.
 You will be given context from an official genetic report and relevant schemas/rules.
 Analyze the provided **Official Genetic Report Context** carefully.
 Understand the expected structure of that report using the **Official Report Schema (repSchema.YAML)**.
+Apply the **Easy Reading (easyReading.YAML)** to make the report easier to understand.
 
 **Official Genetic Report Context:**
 \`\`\`text
@@ -109,17 +128,25 @@ Your task is to generate a simplified report as **well-structured HTML** based o
 ${genRulesContent}
 \`\`\`
 
+**Easy Reading (easyReading.YAML):**
+\`\`\`yaml
+${easyReadingContent}
+\`\`\`
+
+**Specific Instructions for Role '${role}':**
+${roleInstructions.instructions}
+
 **HTML Formatting Requirements:**
 1. **Format the entire output as valid HTML.** Use appropriate semantic tags (e.g., '<h3>', '<p>', '<ul>', '<li>', '<strong>').
 2. Verify HTML validity multiple times before submitting.
 3. Keep headings concise and informative.
 4. Do NOT use CSS or Javascript.
+5. Use '<h3>' tags for section headers and down to '<h6>' for subheaders.
 
 **Content Structure:**
-1. The simplified report HTML MUST **start exactly with the phrase**: ${roleInstructions.startPhrase}. Fill in '[document type]' and '[purpose]' placeholders based on context analysis.
-2. **Strictly follow the structure and logic in genRules.YAML** to build the report section by section.
-3. Clearly mark optional sections that can be omitted if not applicable.
-4. Insert "[IMAGE]" placeholder at the end of the hereditary section when applicable (!important).
+1. **Strictly follow the structure and logic in genRules.YAML** to build the report section by section.
+2. Adjust header numbering if some sections are not present.
+3. Insert "[IMAGE]" (exactly this one) placeholder at the end of the hereditary section when applicable (!important).
 
 **Audience Adaptation:**
 1. **Adapt language, tone, and detail level** for the target audience: **'${role}'**.
@@ -130,9 +157,6 @@ ${genRulesContent}
 **Output Format:**
 1. **Return ONLY the generated HTML content.**
 2. Do not include any explanatory text, markdown formatting, or code block markers.
-
-**Specific Instructions for Role '${role}':**
-${roleInstructions.instructions}
 `;
 
         // 4b. Task 2: Extract Metadta JSON
