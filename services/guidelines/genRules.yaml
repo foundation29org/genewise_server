@@ -189,8 +189,6 @@ secondary_findings_processing_logic: &secondary_findings_logic
 # --- Generation of Simplified Report Sections ---
 simplified_report_sections:
 
-  # Before: Do NOT include any introductory text before the first section header, such as explanations about the report’s purpose or content.
-
   # Section 1: Background (Always present)
   - section_id: 1_Background
     title: "1. Background"
@@ -377,7 +375,8 @@ simplified_report_sections:
         warnings: >
           - "The list of terms is not exhaustive. Identify terms based on their actual usage and relevance in the generated simplified report, considering which technical concepts need explanation for the target audience."
       - action: Define_Terms # Provide simplified standard definitions
-        details: "For each identified term, add a clear and concise definition adapted for the general public."
+        instruction: "For each identified term, add a clear and concise definition adapted for the general public."
+        details: "Do not provide generic definitions, but rather specific definitions based on the actual usage in the generated simplified report."
       - action: Format
         output: List of terms with definitions (e.g., Term: Definition).
 
