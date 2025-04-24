@@ -1,406 +1,281 @@
 # DETAILED Process for generating the simplified report from the official genetic report
+# --- Revised for Maximum Simplicity and Adult Metaphors ---
 
 # --- Definition of Key Process Variables ---
 process_variables:
-  # Variable: primary_finding_exists (Boolean)
-  # Determines if the official report identifies a primary genetic cause (P/LP).
   - variable_name: primary_finding_exists
     type: boolean
     determination_logic:
       description: >
-        Evaluate 'Results', 'Conclusions', and 'Annex_I' sections of the official report.
-        Returns TRUE if ANY of the following conditions are met:
-        1. 'Results' or 'Conclusions' contain text explicitly indicating a causal P/LP finding
-           (e.g., "a pathogenic variant in X that explains the clinical presentation is identified",
-           "result compatible with diagnosis of Y", "genetic confirmation of Z").
-        2. 'Annex_I' lists a variant classified as Pathogenic (P) or Likely Pathogenic (LP)
-           AND the 'Interpretation' or 'Conclusions' section or the associated text in 'Annex_I'
-           explicitly links it as the cause of the patient's clinical presentation/phenotype.
-        Returns FALSE otherwise (e.g., "no variants identified", VUS as the only relevant finding, P/LP not related to phenotype).
-      source_sections: [Results, Conclusions, Annex_I, Interpretation]
-      # Note: Requires NLU to interpret text or search for specific patterns/keywords.
+        Evaluate 'Results', 'Interpretation', and 'Conclusions'. Returns TRUE if there's an explicit statement identifying a P/LP variant as the cause of the patient's phenotype. Returns FALSE otherwise.
+      source_sections: [Results, Interpretation, Conclusions]
 
-  # Variable: primary_finding_details (Object/Dict | Null)
-  # Stores the details of the primary variant, if it exists. Null if primary_finding_exists is false.
-  - variable_name: primary_finding_details
+  - variable_name: primary_finding_details # Info needed for simplified narrative
     type: object | null
     determination_logic:
       condition: primary_finding_exists == true
       action: >
-        Identify the specific P/LP variant marked as causal (according to the logic of 'primary_finding_exists').
-        Extract its details from 'Annex_I' (table and/or associated text) and/or 'Interpretation'.
-        **Important:** Also check if the original report's interpretation mentions significant variable expressivity or reduced penetrance for this specific finding. Store this information if found (e.g., `variable_expressivity_mentioned: true`).
-      source_sections: [Annex_I, Interpretation, Conclusions] # Look for the specific variant identified as causal
-      data_points_to_extract: [Gene, Location, Transcript, CDNA, Protein, Genotype, Classification (P/LP), variable_expressivity_mentioned (boolean, optional)]
-      if_condition_false: null # If there is no primary finding, this variable is null.
+        Extract Gene name, the *derived meaning* of the Classification (e.g., 'significant', 'likely significant'), the *derived meaning* of the Genotype (e.g., 'one_copy', 'both_copies'), and a summary of the original interpretation/reasoning. Check for variable expressivity mention.
+      source_sections: [Interpretation, Conclusions, Annex_I]
+      data_points_to_extract: [Gene, classification_meaning, genotype_meaning, variable_expressivity_mentioned, OriginalReportInterpretationSummary] # Focus on meaning, not labels
+      if_condition_false: null
 
-  # Variable: other_findings_list (List)
-  # List of variants from Annex I that are NOT the primary finding AND meet simplified report criteria (relevant VUS, P/LP non-causal in recessive gene, etc.).
-  - variable_name: other_findings_list
+  - variable_name: other_findings_list # Non-primary findings from Annex I
     type: list
     determination_logic:
       description: >
-        Iterate over all variants listed in the 'Annex_I' table.
-        Filter to include only those that:
-        1. Are NOT the variant stored in 'primary_finding_details' (if it exists).
-        2. Meet the criteria defined for section 4 of the simplified report:
-           - Classified as VUS (and potentially relevant to the phenotype according to the original report's interpretation - *avoid including VUS deemed clearly irrelevant*).
-           - Classified as P/LP but explicitly *not* considered causal in the original report (e.g., heterozygous in a recessive gene without a second variant, P/LP in a gene unrelated to phenotype).
-           - CNVs listed in Annex I.
-           - Specific polymorphisms mentioned in Annex I *only if* the interpretation discusses potential clinical relevance (even if conditional).
-        Store relevant details of these variants (Gene, CDNA, Protein, Genotype, Classification, **OriginalReportInterpretationSummary**).
-        **Crucially**: Capture a concise summary of the *original report's interpretation* for each finding, noting its level of certainty and any caveats.
-      source_sections: [Annex_I, Interpretation, Conclusions] # To verify causality, classification, and interpretation nuances
-      output_item_format: {Gene: string, CDNA: string, Protein: string, Genotype: string, Classification: string, Type: VUS/P_LP_Recessive_Het/P_LP_Unrelated/CNV/Polymorphism, OriginalReportInterpretationSummary: string} # Added summary field
+        List relevant variants from 'Annex_I' NOT primary. Extract Gene, *derived meaning* of Classification/Type (e.g., 'uncertain', 'carrier', 'structural_change'), *derived meaning* of Genotype, and simplified OriginalReportInterpretationSummary preserving caveats.
+      source_sections: [Annex_I, Interpretation]
+      output_item_format: {Gene: string, finding_meaning: string, genotype_meaning: string, OriginalReportInterpretationSummary: string, type: VUS/HetRecessive/CNV/etc} # Capture type for logic
 
-  # Variable: secondary_findings_list (List)
-  # List of explicitly reported secondary findings.
-  - variable_name: secondary_findings_list
+  - variable_name: secondary_findings_list # Findings from Secondary Findings section
     type: list
     determination_logic:
       description: >
-        Check the 'Secondary_Findings' section of the official report.
-        If it does NOT contain "No findings" (or similar text), extract the list of variants reported as secondary findings.
-        Store relevant details (Gene, Variant, Genotype, P/LP Classification, **OriginalReportInterpretationSummary**).
-        **Crucially**: Capture a concise summary of the *original report's interpretation* for each finding, noting its level of certainty and any caveats (e.g., variable expressivity, associated risks).
-      source_sections: [Secondary_Findings, Interpretation] # Check interpretation if details are there
-      # Note: The structure may vary; it could be narrative text or a list/table.
-      output_item_format: {Gene: string, Variant: string, Genotype: string, Classification: string (P/LP), OriginalReportInterpretationSummary: string} # Added summary field
+        List findings from 'Secondary_Findings'. Extract Gene, *derived meaning* of Classification ('significant'/'likely significant'), *derived meaning* of Genotype, and simplified OriginalReportInterpretationSummary preserving caveats.
+      source_sections: [Secondary_Findings, Interpretation]
+      output_item_format: {Gene: string, classification_meaning: string, genotype_meaning: string, OriginalReportInterpretationSummary: string}
 
-# --- Definition of Reusable Logic & Text Snippets (YAML Anchors) ---
+# --- Definition of Reusable Text Snippets (YAML Anchors) ---
 
-# Revised standard text for P/LP variants (Primary or Secondary)
-standard_p_lp_intro_text: &standard_p_lp_intro
+intro_genes_proteins: &intro_genes_proteins
   Generate: >
-    "During the analysis of your genetic material, we identified changes in your DNA known as {Classification} Variants.
-    These alterations have previously been associated with specific health problems.
-    However, it is important to note that sometimes having a variant of this type does not necessarily mean that you will develop the related condition,
-    as other genetic and environmental factors could influence the outcome." # Added "sometimes" and "could influence"
+    "Los genes son como "instrucciones" que dan lugar a las proteínas. Las proteínas son moléculas necesarias para que nuestro cuerpo funcione y se desarrolle. A veces, pueden ocurrir pequeños cambios en estas instrucciones o genes que afectan cómo aprendemos, hablamos o nos desarrollamos."
 
-# Optional text for variable expressivity (if indicated for the specific finding)
-variable_expressivity_text: &variable_expressivity_text
+intro_exome_study: &intro_exome_study
   Generate: >
-    "It is important to highlight that each person with alterations in this gene is unique. The expression can vary between individuals, even among members of the same family."
+    "El exoma es una prueba genética que permite leer un número elevado de genes de los cuales se cuenta con cierto conocimiento de su función e implicación clínica a día de hoy. Más concretamente se leen los exones, que son las partes de los genes que contienen información. En este caso, se han leído aquellos genes que puedan estar relacionados con la clínica de la paciente."
 
-# Constraint for all summarization/simplification steps
+intro_variant_classification_meaning: &intro_variant_classification_meaning
+  Generate: >
+    "Es importante saber que NO todas las variantes o alteraciones en los genes causan enfermedades. Las variantes se pueden clasificar como:
+    
+    * Variantes benignas: existen suficientes evidencias para afirmar que no tienen ningún efecto dañino en el organismo.
+    
+    * Variantes patogénicas: existen suficientes evidencias para afirmar que pueden ser las causantes de una patología. En ocasiones, es necesario que vayan acompañadas de otras alteraciones para que den lugar a una patología.
+    
+    * Variantes de significado incierto: no existen suficientes evidencias para afirmar que son las causantes de una patología, ni para afirmar que no lo son."
+
+simplified_limitations_text: &simplified_limitations_text
+  Generate: "Como cualquier lectura detallada, este estudio es muy completo pero no infalible. Podría no detectar todos los tipos posibles de 'erratas' o cambios en los libros de instrucciones."
+
 summarization_caution: &summarization_caution
-  # This is a meta-instruction applied whenever summarizing text from the original report (Interpretation, Annex I notes, etc.)
   Constraint: >
-    "When summarizing or simplifying the interpretation from the original report:
-    1.  **Reflect Fidelity:** Maintain the original level of certainty. Do not convert hypotheses, suggestions, or possibilities into definitive statements.
-    2.  **Preserve Conditionality:** If the original report indicates that a finding is relevant *only if* certain conditions are met (e.g., in combination with another variant, in homozygosity), this condition must be maintained in the simplified summary.
-    3.  **Attribute Sources:** If predictions from bioinformatics tools are mentioned, state this clearly (e.g., 'Computational tools suggest that...').
-    4.  **Include Key Warnings:** If the original report mentions important limitations (e.g., need for validation for CNVs, technical artifacts), include a simplified version of these warnings."
-
-# Logic for processing variants in "Other Findings" (Section 4) - Revised
-other_findings_processing_logic: &other_findings_logic
-  # Input: A variant from the `other_findings_list`
-  # Output: Narrative text to include in Section 4.
-  actions_based_on_variant_type:
-    - condition: variant.Type == 'VUS'
-      steps:
-        - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-        - Generate: "A variant in the {variant.Gene} gene ({variant.CDNA}, {variant.Protein}) classified as 'Variant of Uncertain Significance (VUS)' was identified."
-        - Generate: "This means that there is currently not enough scientific information to determine with certainty whether this specific variant is related to health problems or is simply a benign variation."
-        - Conditional_Generate: # Only include if interpretation mentions tools/literature.
-            condition: variant.OriginalReportInterpretationSummary contains information about prediction tools or literature.
-            action: >
-              "According to the original report: {Simplified summary of variant.OriginalReportInterpretationSummary, respecting *summarization_caution*.
-              Example if tools mentioned: 'Some computational prediction tools suggest a possible effect, but this is not conclusive.'
-              Example if literature mentioned: 'It has been observed in other cases, but its exact role is unclear.'}"
-        - Lookup_Generate: # Look up inheritance of the associated gene
-            input: variant.Gene
-            action: "In general, alterations in the {variant.Gene} gene are most frequently associated with a [Determine and name simple pattern: dominant/recessive] inheritance pattern."
-        - Add_Statement: "'The clinician should assess whether this VUS variant could be clinically related to the patient's symptoms, although more evidence is needed to confirm or rule it out.'"
-
-    - condition: variant.Type == 'P_LP_Recessive_Het' # P/LP heterozygous variant in AR gene, not considered causal.
-      steps:
-        - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-        - Generate: "A {variant.Classification} variant was identified in heterozygosity in the {variant.Gene} gene ({variant.CDNA}, {variant.Protein})."
-        - Generate: "This gene is associated with an autosomal recessive disease. This means that, generally, two variants (one inherited from each parent) are needed to cause the disease."
-        - Generate: "Finding only one variant of this type, as in this case, usually means the person is a carrier, but it does not explain the symptoms (if any) of that recessive disease."
-        - Conditional_Generate: # Add based on original report's recommendations or context
-            condition: variant.OriginalReportInterpretationSummary suggests further study if clinical suspicion is high.
-            action: "'If the clinical suspicion of a recessive disease associated with this gene is high, further studies could be considered to look for a second variant.'"
-        - Generate: "Summary of the original interpretation: {Simplified summary of variant.OriginalReportInterpretationSummary, respecting *summarization_caution*}" # Include relevant context from report
-
-    - condition: variant.Type == 'P_LP_VUS_AR' # P/LP variant + VUS in the same AR gene.
-      steps:
-        - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-        - Generate: "Two variants were found in the {variant.Gene} gene, associated with recessive inheritance: one {variant.Classification} and another VUS."
-        - Generate: "To cause a recessive disease, two variants are usually needed. Here, one has a {variant.Classification} classification and the other is of uncertain significance (VUS)."
-        - Generate: "Summary of the original interpretation: {Simplified summary of variant.OriginalReportInterpretationSummary, respecting *summarization_caution*}" # This summary should contain the original report's assessment of likelihood/need for segregation.
-        - Add_Statement: "'If the patient's symptoms match the disease associated with this gene, a study of the parents (family segregation) could help interpret whether these two variants together could be the cause.'"
-
-    - condition: variant.Type == 'CNV' # CNV type variant listed in Annex I.
-      steps:
-        - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-        - Extract_Generate: # Extract CNV details if available
-            input: variant details from `other_findings_list` item
-            action: "A copy number variation (CNV) was detected in the {variant.Gene or region} gene/region. This implies a possible [loss/gain] of genetic material."
-        - Generate: "The original report classifies this finding as [{variant.Classification, default='not specified'}]." # State classification if available
-        - Generate: "**Important:** The massive sequencing technique (WES/CES) is not ideal for accurately detecting and characterizing CNVs. Technical limitations or artifacts may exist." # **Crucial addition**
-        - Generate: "Summary of the original interpretation: {Simplified summary of variant.OriginalReportInterpretationSummary, respecting *summarization_caution*. Ensure mention of validation need if present in original report.}" # Include caution from report
-        - Conditional_Generate: # Explicitly add validation need if mentioned or standard practice for uncertain CNVs from NGS
-            condition: variant.OriginalReportInterpretationSummary mentions validation OR (variant.Classification is VUS or uncertain AND technique is NGS).
-            action: "'If this finding is considered clinically relevant, it would be necessary to validate and characterize it in detail using other specific techniques (such as MLPA or array-CGH).'"
-
-    - condition: variant.Type == 'Polymorphism' # Polymorphism mentioned with potential relevance
-      steps:
-        - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-        - Generate: "A variant in the {variant.Gene} gene ({variant.CDNA}, {variant.Protein}) that is common in the population (polymorphism) was identified."
-        - Generate: "Summary of the original interpretation: {Simplified summary of variant.OriginalReportInterpretationSummary, respecting *summarization_caution*. **Crucially, preserve any conditionality mentioned in the original report**, e.g., 'The original report mentions a study postulating that this variant might contribute to a mild phenotype *only if* combined with another pathogenic variant or found in homozygosity. It cannot be stated that it contributes in this case.'}" # **Crucial addition**
-
-# Logic for processing secondary findings (Section 5) - Revised
-secondary_findings_processing_logic: &secondary_findings_logic
-  # Input: A finding from the `secondary_findings_list`
-  # Output: Narrative text to include in Section 5.
-  steps:
-    - ApplyConstraint: *summarization_caution # Apply caution when using original summary
-    - Extract: # Extract details of the secondary finding
-        input: finding from `secondary_findings_list`
-        data_points: [Gene, Variant, Genotype, Classification (P/LP), OriginalReportInterpretationSummary]
-    - ApplyAnchorText: # Use the revised standard P/LP intro
-        anchor: *standard_p_lp_intro
-        substitutions: { Classification: finding.Classification }
-    - Define_Term: # Use simplified standard definition
-        term: "Genotype ({finding.Genotype})" # e.g., Heterozygous
-    - Generate: # Introduction to the gene
-        input: finding.Gene
-        action: "Brief introduction about the general function of the {finding.Gene} gene (simplified)."
-    - Lookup_Summarize: # Look up info about the associated pathology
-        source: "Official report (Secondary_Findings, Interpretation, finding.OriginalReportInterpretationSummary), OMIM, Orphanet, ACMG SF sources."
-        input: finding.Gene
-        action: >
-          Look up the name of the pathology associated with the secondary finding.
-          Add general and prudent information about the condition (associated risks mentioned in the original report or standard sources, general recommendations if any),
-          based first on the `finding.OriginalReportInterpretationSummary` and complementing with external sources if necessary. Simplify if there are broad spectrums. **Respect *summarization_caution***.
-    - Determine_Inheritance_Explain_Image: # Determine inheritance pattern, explain it and include image
-        input: finding.Gene # Look for pattern associated with the relevant condition of the gene
-        source: "Official report (if indicated), OMIM, literature."
-        action: >
-          Identify the relevant inheritance pattern (AD, AR, XL).
-          Generate simplified explanation of the pattern.
-          Select and include the corresponding explanatory image (from the set of 4 images).
-    - Conditional_ApplyAnchorText: # Add text on variable expressivity IF applicable
-        condition: finding.OriginalReportInterpretationSummary indicates variable expressivity for this secondary finding.
-        anchor: *variable_expressivity_text
+    "When summarizing text from the original report:
+    1.  **Reflect Certainty:** Accurately mirror the original report's confidence level (use 'podría', 'sugiere', 'no está claro' if appropriate). DO NOT make uncertain things sound definite.
+    2.  **Preserve Conditions:** If relevance depends on other factors, state this clearly.
+    3.  **Simplify Language:** Omit all code or overly technical terms.Use clear, non-technical terms and analogies. Avoid jargon.
+    4.  **Include Key Caveats:** If the original report mentions important limitations *for a specific finding*, include a simple version."
 
 # --- Generation of Simplified Report Sections ---
 simplified_report_sections:
 
-  # Section 1: Background (Always present)
-  - section_id: 1_Background
-    title: "1. Background"
-    content_generation:
-      - action: Retrieve_Format
-        source: "External clinical history/available to the genetics team."
-        details: "Incorporate relevant clinical background of the patient in narrative format."
-        output: Narrative text.
+  numbering: if any section is omitted, the numbering should be adjusted accordingly.
 
-  # Section 2: Study Performed (Always present)
-  - section_id: 2_Study_Performed
-    title: "2. Study performed"
+  # Section 1: Background
+  - section_id: 1_Background
+    title: "1. Contexto"
     content_generation:
-      - action: Extract
-        source_section: Report_Title
-        data_point: test_type
-        output_variable: test_type_name # e.g., "WES" or "CES"
-      - action: Generate
-        template_based: true
-        input: test_type_name
-        details: "Add standardized explanation of the type of study ({test_type_name}). [Ensure the explanation is simple and clear for a general audience]"
-      - action: Extract_Summarize
-        source_section: Methodology
-        data_points: [sequencing_type, regions_analyzed]
-        details: "Add simplified general information about the genetic technology used (NGS) and its scope (e.g., exome analysis or coding genes)."
-        apply_constraint: *summarization_caution # Even simple summaries need care
-      - action: Extract_Summarize # Take the initial summary from Page 1
+      - action: Retrieve_Format # Assumes clinical context is available
+        source: "External clinical history/available context."
+        details: "Incorporar brevemente el contexto clínico relevante del paciente en formato narrativo."
+        add: "State the post-counseling reinforcement purpose of the report."
+        output: Narrative text.
+  # Section 2: Study Performed - Uses metaphors
+  - section_id: 2_Study_Performed
+    title: "2. El estudio genético realizado"
+    content_generation:
+      - ApplyAnchorText: *intro_genes_proteins
+      - ApplyAnchorText: *intro_exome_study
+      - ApplyAnchorText: *intro_variant_classification_meaning
+      - action: Extract_Summarize # Include high-level result from original report page 1
         source_section: Results
         data_point: summary_finding
-        details: "Include the main summary sentence from the 'Results' section of the official report (e.g., 'No relevant variants were identified', 'The findings are detailed in Annex I')."
-        apply_constraint: *summarization_caution # Avoid misinterpreting the summary
+        details: Take the opportunity to add a brief summary of the result.
+        apply_constraint: *summarization_caution
       - action: Format
-        details: "Combine the above points into a coherent paragraph."
-        output: Narrative text.
+        output: Narrative text combining the above points.
 
-  # Section 3: Result (Content depends on `primary_finding_exists`)
+  # Section 3: Result - Focus on meaning, not labels
   - section_id: 3_Result
     conditional_logic:
       based_on: primary_finding_exists
-      # --- CASE A: NO primary finding (primary_finding_exists == false) ---
+      # --- CASE A: NO primary finding ---
       if_false:
-        title: "3. Result"
+        title: "3. Resultado del estudio"
         content_generation:
           - action: Generate
-            details: "Clearly explain that the study has NOT identified genetic variants classified as Pathogenic or Likely Pathogenic that conclusively explain the patient's clinical presentation."
-          - action: Extract_Summarize_Include # Include relevant limitations
-            source_section: Limitations
-            details: "Mention in a simplified way the general limitations of the technique (e.g., it does not analyze all DNA, it does not detect all types of variants), indicating that a negative result does not completely rule out a genetic cause."
-            apply_constraint: *summarization_caution
+            details: "Tras leer los 'capítulos' relevantes del libro de instrucciones genéticas, **no se encontraron 'erratas' o cambios** que la evidencia científica actual considere claramente la causa principal del motivo de salud estudiado."
+          - ApplyAnchorText: *simplified_limitations_text
           - action: Format
             output: Narrative text.
-      # --- CASE B: YES there is a primary finding (primary_finding_exists == true) ---
+      # --- CASE B: YES primary finding ---
       if_true:
-        title: "3. Identified genetic variant" # More direct title
+        title: "3. Hallazgo genético principal"
         subsections:
-          # 3.1 Genetic Variant
-          - subsection_id: 3.1_Genetic_Variant
-            title: "3.1 Identified genetic variant" # Consistent title
+          # 3.1 Variant Details - NARRATIVE, FOCUS ON MEANING
+          - subsection_id: 3.1_What_Was_Found
+            title: "3.1 ¿Qué cambio se encontró?"
             content_generation:
-              - action: Use_Variable # Use details from the pre-calculated variable
+              - action: Use_Variable
                 variable: primary_finding_details
-                details: "Present the details of the variant: Gene ({primary_finding_details.Gene}), cDNA Notation ({primary_finding_details.CDNA}), Protein Notation ({primary_finding_details.Protein})."
-              - action: ApplyAnchorText # Use revised standard P/LP intro
-                  anchor: *standard_p_lp_intro
-                  substitutions: { Classification: primary_finding_details.Classification }
-              - action: Define_Term # Use simplified standard definition
-                  term: "Classification ({primary_finding_details.Classification})" # e.g., Pathogenic / Likely Pathogenic
-              - action: Define_Term # Use simplified standard definition
-                  term: "Genotype ({primary_finding_details.Genotype})" # e.g., Heterozygous / Homozygous
-              - action: Extract_Summarize_Simplify # Summarize the interpretation from the official report
-                  source_sections: [Interpretation, Annex_I] # Look for interpretation associated with this variant
-                  input: primary_finding_details
-                  action: "Summarize and simplify the explanation from the official report about why this variant is considered causal and relevant to the clinical presentation. **Strictly apply *summarization_caution***."
+              - action: Summarize_Simply
+                  input: primary_finding_details.OriginalReportInterpretationSummary
+                  action: >
+                    "El informe original explicaba por qué se piensa que este cambio específico es relevante en esta situación. {Resumen muy simple de la explicación, respetando *summarization_caution*}."
                   apply_constraint: *summarization_caution
               - action: Format
-                  output: Narrative text explaining the primary variant.
-          # 3.2 Gene / Associated Pathology
-          - subsection_id: 3.2_Gene_Pathology
-            title: "3.2 Gene and Associated Pathology"
+                  output: Narrative text.
+          # 3.2 Gene / Associated Pathology - Simplified
+          - subsection_id: 3.2_Gene_And_Condition
+            title: "3.2 Sobre el gen {primary_finding_details.Gene} y la condición asociada"
             content_generation:
-              - action: Generate # Introduction to the gene
+              - action: Generate
                   input: primary_finding_details.Gene
-                  action: "Brief introduction about the general function of the {primary_finding_details.Gene} gene (simplified)."
-              - action: Lookup_Summarize # Look up info about the pathology
-                  source: "Official report (Interpretation, Conclusions), OMIM (use code if available), Orphanet."
-                  input: primary_finding_details.Gene, Clinical Indication (from Reason_for_Consultation)
+                  action: "El gen {primary_finding_details.Gene} contiene las instrucciones para una tarea específica en el cuerpo relacionada con [explicar función simplificada usando analogía si es posible, ej: 'la construcción muscular', 'la comunicación entre neuronas']."
+              - action: Lookup_Summarize
+                  source: "Original report, Reliable public sources."
+                  input: primary_finding_details.Gene
                   action: >
-                    Look up the name of the pathology associated with the variant/gene in the clinical context.
-                    If described in the official report, summarize that information in a general and prudent way.
-                    If not, look in OMIM/Orphanet and summarize general information about the disease (main symptoms, etc.) in a prudent way.
-                    If the report mentions a spectrum or various phenotypes, generalize the description. **Strictly apply *summarization_caution***.
+                    "Cuando hay cambios importantes en este gen, generalmente se asocia con una condición llamada [Nombre de la condición]. {Breve descripción general y simple de la condición. Respetar *summarization_caution*}."
                   apply_constraint: *summarization_caution
-              - action: Conditional_ApplyAnchorText # Add text on variable expressivity IF applicable
+              - action: Conditional_Generate
                   condition: primary_finding_details.variable_expressivity_mentioned == true
-                  anchor: *variable_expressivity_text
+                  action: "Es importante saber que la forma en que se manifiesta esta condición puede variar entre personas, incluso en la misma familia."
               - action: Format
-                  output: Narrative text describing the gene and associated pathology.
-          # 3.3 Inheritance Pattern
-          - subsection_id: 3.3_Inheritance_Pattern
-            title: "3.3 Inheritance pattern"
+                  output: Narrative text.
+          # 3.3 Inheritance Pattern - Simplified + IMAGE Placeholder
+          - subsection_id: 3.3_Inheritance
+            title: "3.3 ¿Cómo se hereda este tipo de condición?"
             content_generation:
-              - action: Determine_Inheritance_Explain_Image # Determine pattern, explain it and include image
-                  input: primary_finding_details.Gene, primary_finding_details.Genotype # Consider genotype (het/hom) and gene
-                  source: "Official report (Interpretation, Conclusions), OMIM, literature."
+              - action: Determine_Inheritance_Explain_Image # Use simple explanation + metaphors
+                  input: primary_finding_details.Gene, primary_finding_details.genotype_meaning
+                  source: "Original report, Reliable public sources."
                   action: >
-                    Identify the inheritance pattern associated with the pathology and consistent with the genotype (AD, AR, X-Linked Dominant/Recessive).
-                    Generate simplified explanation of the identified pattern.
-                    Select and include the corresponding explanatory image (from the set of 4 images).
+                    Identificar patrón (AD, AR, XL). Generar explicación simple:
+                    Si AD: "Normalmente, basta con tener el cambio en **una** de las dos copias del gen para que la condición pueda manifestarse (herencia dominante)."
+                    Si AR: "Normalmente, se necesita tener el cambio en **ambas** copias del gen para que la condición se manifieste (herencia recesiva). Tenerlo en una sola copia te convierte en 'portador'."
+                    Si XL: "Este gen está en el cromosoma X, por lo que la herencia afecta de forma diferente a hombres y mujeres..."
+                    **Añadir el placeholder '[IMAGE]' al final.**
               - action: Format
-                  output: Narrative text + Image.
+                  output: Narrative text + "[IMAGE]".
 
-  # Section 4: Other Findings (Conditional, uses `other_findings_list`) - Revised
+  # Section 4: Other Findings - Explain meaning directly
   - section_id: 4_Other_Findings
-    title: "4. Other genetic findings"
-    condition: len(other_findings_list) > 0 # Include section only if the list is not empty
+    title: "4. Otros cambios genéticos anotados"
+    condition: len(other_findings_list) > 0
     include_if: condition is true
-    content_generation:
-      - for_each: variant in other_findings_list # Iterate over the pre-filtered variants
-        apply_logic: *other_findings_logic # Apply the REVISED processing logic
-        output_format_per_variant: Separate paragraph or bullet point per variant, ensuring clarity and caution.
-      - action: Format
-        details: "Combine the explanations of each variant in this section, maintaining prudence and fidelity to the original report."
-        output: Narrative text (potentially multi-paragraph).
-
-  # Section 5: Secondary Findings (Conditional, uses `secondary_findings_list`) - Revised
-  - section_id: 5_Secondary_Findings
-    title: "5. Secondary findings"
-    condition: len(secondary_findings_list) > 0 # Include section only if the list is not empty
-    include_if: condition is true
-    content_generation:
-      - for_each: finding in secondary_findings_list # Iterate over the pre-extracted secondary findings
-        apply_logic: *secondary_findings_logic # Apply the REVISED processing logic
-        output_format_per_finding: Separate subsection or detailed paragraph per finding, ensuring clarity and caution.
-      - action: Format
-        details: "Combine the explanations of each secondary finding, maintaining prudence and fidelity to the original report."
-        output: Narrative text (potentially with sub-sections per finding).
-
-  # Section 6: Recommendations (Always present, adapted content)
-  - section_id: 6_Recommendations
-    title: "6. Recommendations"
     content_generation:
       - action: Generate
-        details: "Include standard text about the possibility and general recommendation to periodically re-evaluate genetic data (e.g., every 1-2 years) given the advancement of scientific knowledge."
-      - action: Extract_Filter_Include # Extract relevant original recommendations, filtering out unwanted ones
+        details: "Además del hallazgo principal, se anotaron otros cambios en los 'libros de instrucciones' genéticos. Su significado actual es variable:"
+      - for_each: finding in other_findings_list
+        actions:
+          - ApplyConstraint: *summarization_caution
+          - Generate: # Describe finding narratively - Gene, Meaning, Copies
+              template: "Se encontró un cambio en el gen **{Gene}**, presente en **{genotype_meaning}** copia(s)."
+              input: finding details (Gene, genotype_meaning)
+          - Generate: # Explain meaning based on derived meaning and type
+              input: finding details (finding_meaning, type, OriginalReportInterpretationSummary)
+              logic: |
+                Switch (finding.type):
+                  Case 'VUS': "Actualmente, **no se sabe con certeza** si esta 'errata' afecta a la salud o es simplemente una variación sin importancia (significado incierto)."
+                  Case 'HetRecessive': "Este gen normalmente necesita cambios en *ambas* copias para causar un problema. Encontrar el cambio en una sola copia significa que la persona es **'portadora'**, lo cual no explica la condición principal estudiada."
+                  Case 'CNV': "Este cambio implica una **diferencia en la cantidad** de material genético, como si faltara un trozo de una página o hubiera una copia extra. {Add simplified warning about CNV validation if present in OriginalReportInterpretationSummary}."
+                  Default: "El significado de este cambio es {finding.finding_meaning}." # Fallback
+                Append: " Notas del informe original: {Simplified summary of finding.OriginalReportInterpretationSummary, preserving uncertainty and caveats}."
+          - Format_As: Paragraph
+
+  # Section 5: Secondary Findings - Explain meaning directly
+  - section_id: 5_Secondary_Findings
+    title: "5. Hallazgos secundarios (No relacionados con el motivo del estudio)"
+    condition: len(secondary_findings_list) > 0
+    include_if: condition is true
+    content_generation:
+      - action: Generate
+        details: "A veces, estos estudios revelan información sobre otros riesgos para la salud no relacionados con el motivo inicial. Se reportaron los siguientes:"
+      - for_each: finding in secondary_findings_list
+        actions:
+          - ApplyConstraint: *summarization_caution
+          - Generate: # Describe finding - Gene, Meaning, Copies
+              template: "Hallazgo en el gen **{Gene}**: Se encontró un cambio genético **{classification_meaning}**, presente en **{genotype_meaning}** copia(s)."
+              input: finding details (Gene, classification_meaning, genotype_meaning)
+          - Generate: # Gene Intro
+              template: "El gen {Gene} da instrucciones relacionadas con [función simplificada]."
+              input: finding.Gene
+          - Lookup_Summarize: # Associated condition/risk - simple & cautious
+              source: "Original report (finding.OriginalReportInterpretationSummary), Reliable public sources."
+              input: finding.Gene
+              action: >
+                  "Cambios en este gen se asocian con un posible riesgo futuro para [Nombre simple de condición/área de salud]. {Descripción breve, general y prudente. Respetar *summarization_caution*}."
+              apply_constraint: *summarization_caution
+          - Determine_Inheritance_Explain_Image: # Simplified explanation + IMAGE placeholder
+              input: finding.Gene, finding.genotype_meaning
+              source: "Original report, Reliable public sources."
+              action: >
+                  Identificar patrón (AD, AR, XL). Generar explicación simple con metáfora si es posible.
+                  **Añadir el placeholder '[IMAGE]' al final.**
+          - Format_As: Paragraph_Or_Subsection
+
+  # Section 6: Recommendations - Plain language
+  - section_id: 6_Recommendations
+    title: "6. Recomendaciones y próximos pasos"
+    content_generation:
+      - action: Generate
+        details: "La ciencia genética avanza rápido. Es buena idea comentar estos resultados de vez en cuando con su equipo médico por si surge nueva información relevante."
+      - action: Extract_Filter_Include
         source_section: Recommendations
-        filter_out_keywords: ["referral to Genetic Counseling", "contact the laboratory", "Clinical Genetics consultation"] # Ignore these specific recommendations
-        details: "Include other recommendations from the official report (e.g., specific clinical follow-up, other suggested tests), if any and not filtered, presented in a simplified way. **Apply *summarization_caution***."
+        filter_out_keywords: ["Genetic Counseling", "contact the laboratory", "Clinical Genetics consultation"]
+        details: >
+          "Otras sugerencias del informe original incluían: {Listar recomendaciones restantes resumidas de forma simple. Si no quedan, omitir.} **Aplicar *summarization_caution***."
         apply_constraint: *summarization_caution
-      - action: Define_Variable # Variable to control the parental study phrase
-        variable_name: any_variant_reported_for_interpretation
-        logic: (primary_finding_exists or len(other_findings_list) > 0 or len(secondary_findings_list) > 0) # True if something was reported in Sec 3, 4, or 5
-      - action: Conditional_Add_Statement # Add phrase about parental study if applicable
-        condition: any_variant_reported_for_interpretation == true
-        statement: "'In many cases, to better interpret the results and understand the origin of the identified genetic variants (whether they come from the mother, the father, or are new), a genetic study of the parents (segregation study) is recommended, especially for those variants that have clinical interest.'"
+      - action: Conditional_Generate
+        condition: primary_finding_exists == true
+        action: "La tecnología utilizada puede no detectar ciertos tipos de cambios o capturar todas las regiones de interés." # Plain language reminder
+      - action: Define_Variable
+        variable_name: any_variant_reported
+        logic: (primary_finding_exists or len(other_findings_list) > 0 or len(secondary_findings_list) > 0)
+      - action: Conditional_Add_Statement
+        condition: any_variant_reported == true
+        statement: >
+          "'Para entender mejor si un cambio genético fue heredado o es nuevo en la familia, a veces es útil realizar estudios genéticos a los padres.'"
       - action: Format
-        details: "Combine the above points into narrative text."
         output: Narrative text.
 
-  # Section 7: Key Messages (Always present)
+  # Section 7: Key Messages - UL/LI format, simple language
   - section_id: 7_Key_Messages
-    title: "7. Key messages"
+    title: "7. Mensajes clave para recordar"
     content_generation:
-      - action: Generate_Summary # Create summary based on previous sections
-        based_on_sections: [3_Result, 4_Other_Findings, 5_Secondary_Findings] # Consider the main results
+      - action: Generate_Summary
+        based_on_sections: [3_Result, 4_Other_Findings, 5_Secondary_Findings]
         details: >
-          Create a very concise summary (2-4 key points) with the most important messages:
-          - Was a genetic cause found? (Yes/No/Uncertain - reflect report certainty)
-          - What is the main finding (if any)? (Gene/Variant/Disease)
-          - Are there other relevant findings (VUS, Secondary) and what do they broadly imply? (Mention uncertainty if applicable)
-          **Ensure this summary also respects the level of certainty from the original report.**
+          Crear 2-4 puntos clave muy concisos:
+          - Resultado principal (¿Se encontró una explicación genética clara? Sí/No/Incierto - reflejar certeza).
+          - Hallazgo principal (si lo hay, gen y condición asociada, en simple).
+          - Otros cambios (si los hay, mencionar brevemente su naturaleza - incierta, portador, secundario).
+          **Asegurar lenguaje muy simple y reflejar certeza. Aplicar *summarization_caution*.**
         apply_constraint: *summarization_caution
       - action: Add_Standard_Disclaimer
-        details: "'This report is a simplified interpretation of the results of the complete genetic study. For a detailed discussion of the clinical significance, implications, and next steps, consultation with your specialist doctor or a clinical genetics unit is essential.'"
+        details: "'Este documento es un resumen para ayudar a entender los resultados. Para cualquier duda sobre el significado clínico o los pasos a seguir, hable con su médico especialista o un profesional de genética clínica.'"
       - action: Format
-        output: Bullet points or short paragraph.
+        output: Bullet points `<ul><li>...</li></ul>`.
 
-  # Section 8: Glossary (Always present)
+  # Section 8: Glossary - Defines concepts used, not jargon avoided
   - section_id: 8_Glossary
-    title: "8. Glossary"
+    title: "8. Pequeño Glosario"
     content_generation:
-      - action: Identify_Terms # Identify technical terms used in this simplified report
-        source: "Sections 1-7 generated from the simplified report."
-        terms_to_look_for: ["DNA", "Gene", "Genetic variant", "Pathogenic", "Likely Pathogenic", "Variant of Uncertain Significance (VUS)", "Heterozygous", "Homozygous", "Autosomal Dominant Inheritance", "Autosomal Recessive Inheritance", "X-Linked Inheritance", "CNV (Copy Number Variation)", "WES", "CES", "NGS", "Exome", "Carrier", "Family segregation", "Variable expressivity", "Reduced penetrance", etc.] # Expanded list
-        warnings: >
-          - "The list of terms is not exhaustive. Identify terms based on their actual usage and relevance in the generated simplified report, considering which technical concepts need explanation for the target audience."
-      - action: Define_Terms # Provide simplified standard definitions
-        instruction: "For each identified term, add a clear and concise definition adapted for the general public."
-        details: "Do not provide generic definitions, but rather specific definitions based on the actual usage in the generated simplified report."
+      - action: Identify_Terms # Identify concepts actually explained/used
+        source: "Sections 1-7 generated text."
+        terms_to_look_for: ["ADN", "Gen", "Proteína", "Variante Genética", "Variante", "Exoma", "Herencia Dominante", "Herencia Recesiva", "Portador", "Ligado al X", "Hallazgo Secundario", "Significado Incierto"] # Focus on concepts explained
+      - action: Define_Terms
+        instruction: "Para cada término conceptual usado en el texto, añadir una definición clara y simple, usando las metáforas si ayuda (ej: Gen: Capítulo del libro de instrucciones del ADN)."
       - action: Format
-        output: List of terms with definitions (e.g., Term: Definition).
+        output: List format `<ul><li><strong>Término:</strong> Definición</li>...</ul>`.
 
 # --- Potential Weaknesses and Ambiguities ---
-# (Added notes regarding new complexities)
 potential_ambiguities_and_challenges:
-  - point: Natural Language Understanding (NLU)
-    description: >
-      Determining `primary_finding_exists`, extracting/simplifying `Interpretation`, and now accurately capturing the **level of certainty** and **specific caveats** (like CNV validation needs, mention of predictive tools for VUS, conditionality of polymorphisms) rely even more heavily on sophisticated NLU. Variability in original report wording remains a key challenge.
-  - point: External Data Dependency
-    description: >
-      Searching for information about pathologies, gene inheritance (OMIM, Orphanet), and now also about **variable expressivity** or **reduced penetrance** requires access to updated external databases. Availability, consistency, and interpretability of these data may vary. A strategy is needed to handle missing or conflicting data.
-  - point: Variability in Official Reports
-    description: >
-      Official reports can vary in format, level of detail, and exact location of information. Rules must be robust or require adjustments. How **uncertainties** or **warnings** are phrased can vary significantly.
-  - point: Subjectivity of Simplification & Caution
-    description: >
-      The appropriate level of "simplification" and how to phrase the required "caution" are subjective. The rules attempt to capture the intent, but generating text that is accurate, cautious, and comprehensible requires a delicate balance, possibly needing human validation. **Avoiding over-interpretation now requires active constraint during generation.**
-  - point: Inference vs. Explicit Information
-    description: >
-      Determining if "variable expressivity" is relevant or if a specific warning from the original report should be included might require inference if not explicitly tagged, adding complexity.
-  - point: Handling Edge Cases
-    description: >
-      Complex cases (e.g., mosaicism, digenic inheritance, multiple primary findings, complex variants like large or difficult-to-interpret CNVs) may not be fully covered and would require additional logic or manual handling. Logic for CNVs and polymorphisms has been improved but may need further refinement.
-  - point: Implementation of Constraints
-    description: >
-      The `summarization_caution` constraint is a meta-instruction. Its effective implementation depends on the system's (e.g., LLM's) ability to apply it consistently across all summarization and text generation steps.
+  - point: Deriving Meaning Accurately
+    description: The logic to convert technical classifications/genotypes into simplified 'meaning' (e.g., 'significant', 'uncertain', 'one_copy') needs careful implementation and depends heavily on the LLM's ability to interpret the source report correctly.
+  - point: Metaphor Suitability
+    description: Ensuring the chosen metaphors (book, errata, workers) resonate well with the adult/adolescent audience and don't oversimplify or trivialize the information.
+  - point: Loss of Specificity
+    description: By removing technical labels entirely from the narrative (VUS, P/LP, Heterozygous), some precision is lost, which might be relevant for discussions between healthcare professionals, although the goal here is patient communication.

@@ -1,24 +1,8 @@
 # Schema describing the structure and expected content of the Official Genetic Report (WES/CES)
 
 report_schema:
-  Header:
-    id: Header
-    purpose: Institutional identification and contact.
-    content_description: Institutional logos (e.g., SJD), service name, address, phone, email.
-    format: Standard header.
-    key_data_points:
-      - institution_name
-      - service_name
-      - address
-      - contact_info
 
-  Report_Title:
-    id: Report_Title
-    purpose: Specifies the type of test performed.
-    content_description: Title such as "MASSIVE SEQUENCING REPORT - WES" or "MASSIVE SEQUENCING REPORT - CES".
-    format: Large centered title.
-    key_data_points:
-      - test_type (WES/CES)
+  details: "first page uses to be the most important page"
 
   Patient_Sample_Info_Block:
     id: Patient_Sample_Info_Block
@@ -60,7 +44,7 @@ report_schema:
 
   Results:
     id: Results
-    purpose: High-level summary of main findings.
+    purpose: High-level summary of main findings. (Key section for simplified report's primary outcome).
     content_description: >
       May directly declare an explanatory P/LP finding (e.g., "a variant is identified..."),
       refer to Annex I for details (e.g., "findings detailed in Annex I"),
@@ -69,14 +53,16 @@ report_schema:
     key_data_points:
       - summary_finding: string
       - references_annex_i: boolean
+    # generation_note: Often contains the core statement about whether a causal finding was identified. Use cautiously for Section 2 summary.
 
   Interpretation:
     id: Interpretation
     purpose: Explanation of the meaning of specific reported variants (if any in this section or referenced from Annex I/Conclusions).
-    content_description: Variant details (gene, coordinates, transcript, cDNA, protein), evidence (databases, literature, ACMG/AMP criteria), relationship with clinical presentation.
+    # generation_note: This technical section provides the detailed reasoning behind classifications and causality assessments. It is a primary source for simplifying explanations in Sections 3, 4, and 5 of the simplified report, but MUST be heavily simplified and translated into non-technical language, avoiding direct quotes or forced jargon.
+    content_description: Variant details (gene, coordinates, transcript, cDNA, protein), evidence (databases, literature, ACMG/AMP criteria), relationship with clinical presentation. Only variants described in the Results section will be explained here.
     format: Technical narrative text.
     key_data_points:
-      - variant_details: (if applicable)
+      - variant_details: # (if applicable) Structure for internal use, not direct copy
           - gene: string
           - genomic_location: string
           - transcript: string
@@ -87,12 +73,13 @@ report_schema:
 
   Conclusions:
     id: Conclusions
-    purpose: Final diagnostic interpretation in clinical context.
+    purpose: Final diagnostic interpretation in clinical context. (Key section for simplified report's primary outcome).
     content_description: States whether a genetic cause (P/LP variant) was found that explains the phenotype. Reiterates the key finding if there was one. May explicitly mention whether a genetic diagnosis is offered or not.
     format: Narrative text.
     key_data_points:
       - diagnostic_statement: string (e.g., "confirms genetic diagnosis", "no genetic cause identified")
       - key_finding_reiteration: string (optional)
+    # generation_note: Crucial for determining `primary_finding_exists` and summarizing the main outcome in Sections 3 and 7.
 
   Recommendations:
     id: Recommendations
@@ -105,6 +92,7 @@ report_schema:
       - contact_lab_info: boolean
       - future_reanalysis_suggestion: boolean
       - other_test_recommendations: list
+    # generation_note: Source for Section 6. Filter out GC/lab contact mentions. Simplify other recommendations cautiously.
 
   Validation:
     id: Validation
@@ -128,6 +116,8 @@ report_schema:
       - bioinformatics_pipeline_summary: narrative_text
       - analysis_software: string
       - coverage_target: string
+    # generation_note: Use for simplified explanation of the *type* of test (NGS/WES/CES) in Section 2. **DO NOT include specific coverage metrics, coverage quality statements, detailed pipeline descriptions, or regions analyzed in the simplified report.**
+    # Note: Coverage information is not necessary to mention in the simplified report.
 
   Limitations:
     id: Limitations
@@ -137,6 +127,8 @@ report_schema:
     key_data_points:
       - coverage_limitations: boolean
       - variant_type_limitations: boolean (e.g., structural, regulatory, repeat expansions)
+    # generation_note: Source for simplified limitations text. **Use ONLY the standardized simplified text specified in genRules (anchor: &simplified_limitations_text), avoiding specific technical examples from the original report.**
+    # Note: Coverage information is not necessary to mention in the simplified report.
 
   Reporting_Criteria:
     id: Reporting_Criteria
@@ -186,6 +178,7 @@ report_schema:
     id: Annex_I
     purpose: Detailed list of relevant genetic variants identified (may include P, LP, relevant VUS). Could contain the primary finding if not summarized on page 1.
     format: Table optionally followed by interpretive text for specific variants.
+    # generation_note: Variants listed here (unless identified as the primary finding based on Results/Conclusions/Interpretation) should feed into Section 4 ('Other Findings') of the simplified report. Explain cautiously, preserving uncertainty. Focus on Gene, Classification, and simplified interpretation.
     content:
       variant_table:
         columns: [Gene, Location, Transcript, CDNA, Protein, Genotype, Depth, Classification (Implicit or explicit)] # Classification may be here or in attached text/Interpretation
@@ -195,11 +188,12 @@ report_schema:
   Secondary_Findings:
     id: Secondary_Findings
     purpose: Report of medically actionable incidental findings.
-    content_description: List P/LP findings according to laboratory policy (e.g., ACMG SF list) or states "No findings". May include variant details here or reference Annex I/Interpretation.
+    # generation_note: This section is the primary source for Section 5 ('Secondary Findings') of the simplified report. Details are often self-contained here. Explain cautiously, focusing on Gene, Classification, Condition, and Inheritance.
+    content_description: List P/LP findings according to laboratory policy (e.g., ACMG SF list) or states "No findings". Details of secondary findings will only appear in this section.
     format: Narrative text, potentially listing variants.
     key_data_points:
       - findings_list: list or string ("No findings")
-      - variant_details: (if findings present) list of [Gene, Variant, Genotype, Classification]
+      - variant_details: # (if findings present) list of [Gene, Variant, Genotype, Classification]
 
   Annex_II_Genes_Analyzed:
     id: Annex_II
@@ -216,6 +210,7 @@ report_schema:
     format: List of gene names or statement of adequate coverage.
     key_data_points:
       - low_coverage_gene_list: list or string ("Adequate coverage")
+    # generation_note: **DO NOT mention the content of this annex or gene-specific coverage issues in the simplified report.**
 
   Footer:
     id: Footer
