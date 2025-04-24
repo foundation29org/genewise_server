@@ -29,49 +29,6 @@ try {
 
 // --- Helper Functions ---
 
-/**
- * Gets role-specific prompt instructions (strt phrase and detailed guidance).
- * NOTE: Updated instructions to mention required HTML tags.
- * @param {string} role - The role ('child', 'adolescent', 'adult').
- * @returns {object} - Object with startPhrase and instructions.
- */
-function getRoleSpecificInstructions(role) {
-    const roleInstructionsMap = {
-        child: `
-Audience: **Young child** (around 5–7 years old)
-
-Avoid all medical jargon. Use phrases like "body's instructions" instead of "genes".
-Speak directly to the child using "you" and "your".
-Keep a gentle, calming tone. Avoid anything scary or overly serious.
-Explain only the main ideas, but do not be concise. Take your time to explain everything.
-        `,
-        adolescent: `
-Audience: **Adolescent / Teenager**
-
-Use clear, respectful language. Avoid overwhelming or overly technical phrasing.
-You can introduce key terms (e.g., variant, gene name) but explain them immediately.
-Include key findings if present (e.g., gene, type of variant, relevance to symptoms).
-If no causal variant: explain clearly and acknowledge test limitations.
-Mention possible inheritance only if clearly described in the report.
-        `,
-        adult: `
-Audience: **Adult**
-
-Use precise but accessible language. Assume general health literacy, not genetics expertise.
-Use appropriate genetic terms (e.g., gene name, VUS, autosomal dominant) with short definitions.
-Present key findings accurately (gene, variant, classification, significance).
-Explain inheritance, testing limitations, and possible implications for family if mentioned.
-Maintain an objective, informative tone—empathetic but not emotional.
-        `
-    };
-
-    const roleSpecific = roleInstructionsMap[role] || roleInstructionsMap['adult'];
-
-    return {
-        instructions: `${roleInstructionsMap[role] || roleInstructionsMap['adult']}`
-    };
-}
-
 // --- Main Endpoint Logic ---
 
 /**
@@ -83,22 +40,31 @@ Maintain an objective, informative tone—empathetic but not emotional.
 async function callSummary(req, res) {
     // Step 1: Log entry and identify request
     const userId = req.body.userId;
-    const role = req.body.role;
+    const role = req.body.role; // Role is logged but generation logic is unified
     const paramForm = req.body.paramForm; // Unique identifier for this generation task
-    const contextInput = req.body.context; // Content of the official genetic report or related dat
+    let contextInput = req.body.context; // Content of the official genetic report or related data
     const nameFiles = req.body.nameFiles;   // Original file name(s)
     console.log(`[SummaryService] Received request for callSummary. User: ${userId}, Role: ${role}, ParamForm: ${paramForm}`);
 
-    // Step 2: Input Validation
+    // Step 2: Input Validation & Context Processing
     if (!userId || !contextInput || !role || !paramForm || !nameFiles) {
-        console.error("[SummaryService] Bad Request: Missing required fields in request body (userId, context, role, paramForm, nameFiles).");
+        console.error(`[SummaryService] Bad Request (ParamForm: ${paramForm}, User: ${userId}): Missing required fields.`);
         return res.status(400).send({ msg: "Bad Request: Missing required fields.", status: 400 });
     }
-    // YAML files are checked at startup, no need to re-check here unless dynamic loading is introduced.
+    // YAML files are checked at startup.
+
+    // Ensure context is a single string
+    if (Array.isArray(contextInput)) {
+        console.log(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) Input context is an array, joining into a single string.`);
+        contextInput = contextInput.join('\\n\\n---\\n\\n'); // Join sections if provided as an array
+    } else if (typeof contextInput !== 'string') {
+        console.error(`[SummaryService] Bad Request (ParamForm: ${paramForm}, User: ${userId}): Context must be a string or an array of strings.`);
+        return res.status(400).send({ msg: "Bad Request: Invalid context format.", status: 400 });
+    }
+    const processedContext = contextInput; // Use this variable henceforth
 
     try {
         // Step 3: Prepare System Prompt (Common Context for LLM)
-        // Provides the raw materil and schema understanding for all subsequent tasks.
         const systemPromptBase = `
 You are an expert genetics assistant analyzing patient genetic information.
 You will be given context from an official genetic report and relevant schemas/rules.
@@ -108,7 +74,7 @@ Apply the **Easy Reading (easyReading.YAML)** to make the report easier to under
 
 **Official Genetic Report Context:**
 \`\`\`text
-${contextInput}
+${processedContext}
 \`\`\`
 
 **Official Report Schema (repSchema.YAML):**
@@ -117,11 +83,11 @@ ${repSchemaContent}
 \`\`\`
 `;
 
-        // Step 4: Prepare Prompts & Call Langchin Service for Each Task in Prallel
-        // 4a. Task 1: Generate Simplified Report HTML
-        const roleInstructions = getRoleSpecificInstructions(role);
+        // Step 4: Prepare Prompts & Call Langchain Service for Each Task in Parallel
+        // 4a. Task 1: Generate Simplified Report HTML (Role-unified)
+        // Note: Role-specific instructions are removed/standardized, the 'role' variable is kept for logging.
         const userPromptSummaryText = `
-Your task is to generate a simplified report as **well-structured HTML** based on the provided context and rules.
+Your task is to generate a simplified report as **well-structured HTML** based on the provided context and rules, intended for an adult/adolescent audience.
 
 **Detailed Generation Rules (genRules.YAML):**
 \`\`\`yaml
@@ -133,8 +99,13 @@ ${genRulesContent}
 ${easyReadingContent}
 \`\`\`
 
-**Specific Instructions for Role '${role}':**
-${roleInstructions.instructions}
+**Specific Instructions:**
+
+- Use clear, respectful language appropriate for non-experts (adults/adolescents). Avoid overly technical jargon.
+- Explain key terms (e.g., variant, gene name) simply when first introduced.
+- Include key findings if present (e.g., gene, type of variant, potential relevance).
+- If no causal variant is identified, explain this clearly and mention test limitations briefly.
+- Mention possible inheritance patterns *only if* explicitly stated and clear in the source report.
 
 **HTML Formatting Requirements:**
 1. **Format the entire output as valid HTML.** Use appropriate semantic tags (e.g., '<h3>', '<p>', '<ul>', '<li>', '<strong>').
@@ -149,205 +120,153 @@ ${roleInstructions.instructions}
 3. Insert "[IMAGE]" (exactly this one) placeholder at the end of the hereditary section when applicable (!important).
 
 **Audience Adaptation:**
-1. **Adapt language, tone, and detail level** for the target audience: **'${role}'**.
-2. Use the specific guidance provided below for this role.
-3. Ensure the report is clear, informative, neutral, and avoids definitive medical conclusions.
-4. Explain limitations if no causal findings exist, using standard HTML paragraphs.
+1. **Maintain a consistent tone and detail level** suitable for an adult/adolescent non-expert.
+2. Ensure the report is clear, informative, neutral, and avoids definitive medical conclusions or advice.
+3. Explain limitations if no causal findings exist, using standard HTML paragraphs.
 
 **Output Format:**
 1. **Return ONLY the generated HTML content.**
 2. Do not include any explanatory text, markdown formatting, or code block markers.
 `;
 
-        // 4b. Task 2: Extract Metadta JSON
-        const userPromptMetadataJson = `
+        // 4b. Task 2: Extract Inheritance Pattern JSON
+        const userPromptInheritanceJson = `
 Based on your analysis of the **Official Genetic Report Context** and understanding of the **Official Report Schema (repSchema.YAML)**:
 
-1.  Extract the following metadata points.
-2.  Return the information **strictly as a single JSON object**.
-3.  **Do NOT include any text before or after the JSON object**.
-4.  Ensure the JSON values adhere to the specified types/options.
+1.  Determine the **genetic inheritance pattern** based *only* on the primary finding if a P/LP variant is explicitly stated as causal for the phenotype.
+2.  Choose the pattern from: 'autosomal dominant', 'autosomal recessive', 'X-linked dominant', 'X-linked recessive', 'Y-linked', 'mitochondrial', 'multifactorial'.
+3.  If no causal P/LP variant is found, or if the inheritance pattern is not clearly stated or derivable from the primary finding, use 'uncertain'.
+4.  If the concept of inheritance is not applicable (e.g., somatic findings), use 'not applicable'.
+5.  Return the information **strictly as a single JSON object** with only the key "genetic_inheritance_pattern".
+6.  **Do NOT include any text before or after the JSON object**.
 
-**Required Metadata Keys and Values:**
+**Required JSON Structure:**
 \`\`\`json
 {
-  "type_of_technique": "<'WGS'|'Exome'|'Panel'|'Unknown'>", // Determine from report sections like Title, Methodology
-  "pathogenic_variants_present": <true|false>, // Based on genRules logic for 'primary_finding_exists' (P/LP explicitly stated as causal for phenotype)
-  "genetic_inheritance_pattern": "<'autosomal dominant'|'autosomal recessive'|'X-linked dominant'|'X-linked recessive'|'Y-linked'|'mitochondrial'|'multifactorial'|'uncertain'|'not applicable'>", // Determine based on primary finding (if present and pattern is clear) or state 'uncertain'/'not applicable'
-  "paternal_tests_confirmation_needed": <true|false> // Determine based on genRules section 6 logic (parental study recommended for interpretation)
+  "genetic_inheritance_pattern": "<'autosomal dominant'|'autosomal recessive'|'X-linked dominant'|'X-linked recessive'|'Y-linked'|'mitochondrial'|'multifactorial'|'uncertain'|'not applicable'>"
 }
 \`\`\`
 
 **Example Output (ensure your output is ONLY the JSON):**
 \`\`\`json
 {
-  "type_of_technique": "Exome",
-  "pathogenic_variants_present": false,
-  "genetic_inheritance_pattern": "uncertain",
-  "paternal_tests_confirmation_needed": true
+  "genetic_inheritance_pattern": "uncertain"
 }
 \`\`\`
 `;
 
-        // 4c. Task 3: Extrct Timeline JSON
-        const userPromptTimelineJson = `
-Based on your analysis of the **Official Genetic Report Context**:
-
-1.  Create a chronological timeline of key events mentioned in the text.
-2.  Structure the timeline as a JSON array of event objects.
-3.  Each event object must have the keys: 'date', 'eventType', 'keyGeneticEvent'.
-4.  Standardize dates to 'YYYY-MM-DD' if possible. Use 'Unknown' if no date is found for a key event.
-5.  Choose 'eventType' from: 'diagnosis', 'treatment', 'test', 'genetic_finding', 'consultation', 'birth_date', 'sample_collection', 'report_date', 'other'.
-6.  'keyGeneticEvent' should be a concise description (e.g., "WES performed", "VUS in GENEX identified", "Pathogenic variant confirmed", "Patient born", "Report issued").
-7.  **Return ONLY the JSON array (starting with '[' and ending with ']').** Do not include any explanatory text, markdown formatting, or anything else.
-
-**Example Output (ensure your output is ONLY the JSON array):**
-\`\`\`json
-[
-  { "date": "2013-11-15", "eventType": "birth_date", "keyGeneticEvent": "Patient born" },
-  { "date": "2021-02-28", "eventType": "sample_collection", "keyGeneticEvent": "Peripheral blood sample collected" },
-  { "date": "Unknown", "eventType": "test", "keyGeneticEvent": "WES performed (Agilent SSel XT HS+XT)" },
-  { "date": "2023-05-11", "eventType": "report_date", "keyGeneticEvent": "WES Report issued" }
-]
-\`\`\`
-`;
-
         // Step 5: Execute LLM calls in parallel using the refactored Langchain service
-        console.log("[SummaryService] Sending prompts to Langchain service...");
+        console.log(`[SummaryService] Sending prompts to Langchain service... (ParamForm: ${paramForm}, User: ${userId})`);
         const promises = [
             langchain.generateStructuredText(userId, systemPromptBase, userPromptSummaryText),
-            langchain.extractJson(userId, systemPromptBase, userPromptMetadataJson),
-            langchain.extractJson(userId, systemPromptBase, userPromptTimelineJson)
+            langchain.extractJson(userId, systemPromptBase, userPromptInheritanceJson) // Changed from userPromptMetadataJson
+            // Timeline call removed
         ];
 
         // Wait for all LLM calls to complete
-        // Use Promise.allSettled to handle potential individual failures gracefully
         const results = await Promise.allSettled(promises);
 
         const summaryTextResult = results[0];
-        const metadataJsonResult = results[1];
-        const timelineJsonResult = results[2];
+        const inheritanceJsonResult = results[1]; // Renamed from metadataJsonResult
+        // timelineJsonResult removed
 
-        console.log("[SummaryService] Langchain responses received.");
+        console.log(`[SummaryService] Langchain responses received. (ParamForm: ${paramForm}, User: ${userId})`);
 
         // Step 6: Process LLM Responses (handle settled promises)
 
-        let finalSummaryHtml = "<p>Error: Could not generate the simplified summary.</p>";
-        let finalMetadataJson = { error: "Metadata extraction failed." };
-        let finalTimelineJson = []; // Default to empty array
+        let finalSummaryHtml = `<p>Apologies, the simplified summary could not be generated at this time. Please try again later or contact support if the issue persists. (Ref: ${paramForm})</p>`; // More user-friendly error
+        let inheritancePatternData = { genetic_inheritance_pattern: "extraction_failed" }; // Renamed from finalMetadataJson, simplified structure
 
         // Process Summary HTML
         if (summaryTextResult.status === 'fulfilled' && typeof summaryTextResult.value === 'string') {
             finalSummaryHtml = summaryTextResult.value.trim();
             if (!finalSummaryHtml.startsWith('<') || !finalSummaryHtml.endsWith('>')) {
-                console.warn("[SummaryService] LLM response for HTML doesn't seem to start/end with tags. Check output.");
+                console.warn(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) LLM response for HTML doesn't seem to start/end with tags. Check output.`);
             }
-            console.log("[SummaryService] Simplified Report HTML generated successfully.");
+            console.log(`[SummaryService] Simplified Report HTML generated successfully. (ParamForm: ${paramForm}, User: ${userId})`);
         } else {
-            console.error("[SummaryService] Failed to generate Simplified Report HTML:", summaryTextResult.reason || "Unknown error");
-            // Keep default error message for finalSummaryHtml
+            const errorReason = summaryTextResult.reason || "Unknown error";
+            console.error(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) Failed to generate Simplified Report HTML:`, errorReason);
             // Log the raw prompt used for debugging
-            console.error("[SummaryService] Failed Prompt (Summary HTML):\n", userPromptSummaryText);
+            console.error(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) Failed Prompt (Summary HTML):\n`, userPromptSummaryText);
+            // insights.error(`Summary HTML generation failed for ${paramForm}, User: ${userId}`, { error: errorReason, prompt: userPromptSummaryText }); // Optional: Log to insights
         }
 
-        // Process Metadata JSON
-        if (metadataJsonResult.status === 'fulfilled' && typeof metadataJsonResult.value === 'object') {
-            finalMetadataJson = metadataJsonResult.value; // Already parsed by langchain.extractJson
-            console.log("[SummaryService] Metadata JSON extracted successfully:", finalMetadataJson);
+        // Process Inheritance Pattern JSON
+        if (inheritanceJsonResult.status === 'fulfilled'
+            && typeof inheritanceJsonResult.value === 'object'
+            && inheritanceJsonResult.value !== null
+            && inheritanceJsonResult.value.hasOwnProperty('genetic_inheritance_pattern'))
+        {
+            inheritancePatternData = { genetic_inheritance_pattern: inheritanceJsonResult.value.genetic_inheritance_pattern }; // Extract only the required key
+            console.log(`[SummaryService] Inheritance Pattern JSON extracted successfully:`, inheritancePatternData, `(ParamForm: ${paramForm}, User: ${userId})`);
         } else {
-            console.error("[SummaryService] Failed to extract Metadata JSON:", metadataJsonResult.reason || "Unknown error");
-             // Keep default error message for finalMetadataJson
+            const errorReason = inheritanceJsonResult.reason || "Invalid or missing response object/key";
+            console.error(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) Failed to extract Inheritance Pattern JSON:`, errorReason, "Received:", inheritanceJsonResult.value);
              // Log the raw prompt used for debugging
-            console.error("[SummaryService] Failed Prompt (Metadata JSON):\n", userPromptMetadataJson);
+            console.error(`[SummaryService] (ParamForm: ${paramForm}, User: ${userId}) Failed Prompt (Inheritance JSON):\n`, userPromptInheritanceJson);
+            // insights.error(`Inheritance JSON extraction failed for ${paramForm}, User: ${userId}`, { error: errorReason, prompt: userPromptInheritanceJson, response: inheritanceJsonResult.value }); // Optional: Log to insights
+            // Keep default error message for inheritancePatternData
         }
 
-        // Process Timeline JSON
-        if (timelineJsonResult.status === 'fulfilled' && Array.isArray(timelineJsonResult.value)) {
-            finalTimelineJson = timelineJsonResult.value; // Already parsed by langchain.extractJson
-            console.log("[SummaryService] Timeline JSON extracted successfully.");
-        } else {
-            console.error("[SummaryService] Failed to extract Timeline JSON:", timelineJsonResult.reason || "Unknown error");
-            finalTimelineJson = [{ date: "Error", eventType: "error", keyGeneticEvent: "Timeline extraction failed." }]; // Provide error entry in timeline
-            // Log the raw prompt used for debugging
-            console.error("[SummaryService] Failed Prompt (Timeline JSON):\n", userPromptTimelineJson);
-        }
+        // Timeline processing block removed
 
         // Step 7: Persist Generation Details to Azure Blob Storage
-        const blobPromises = [];
+        const blobPromises = []; // Only one blob now
         const timestamp = new Date().toISOString();
         const generationBaseUrl = `${paramForm}/${timestamp.replace(/:/g, '-')}`; // Unique path per request/timestamp
 
-        // 7a. Save Summary Generation Details
-        const summaryDataToSave = {
+        // 7a. Save Generation Details (consolidated)
+        const generationDetailsToSave = { // Renamed from summaryDataToSave
             generationJobId: paramForm,
             userId: userId,
-            role: role,
+            role: role, // Keep role for tracking
             sourceFileNames: nameFiles,
-            // contextUsed: contextInput, // Optional: Exclude if too large/sensitive
+            // contextUsed: processedContext, // Optional: Exclude if too large/sensitive
             promptUsedForSummaryHtml: userPromptSummaryText,
-            promptUsedForMetadata: userPromptMetadataJson,
+            promptUsedForInheritance: userPromptInheritanceJson, // Renamed
             llmRawResponseSummaryHtml: summaryTextResult.status === 'fulfilled' ? summaryTextResult.value : `Error: ${summaryTextResult.reason}`,
-            llmRawResponseMetadata: metadataJsonResult.status === 'fulfilled' ? JSON.stringify(metadataJsonResult.value) : `Error: ${metadataJsonResult.reason}`,
+            llmRawResponseInheritance: inheritanceJsonResult.status === 'fulfilled' ? JSON.stringify(inheritanceJsonResult.value) : `Error: ${inheritanceJsonResult.reason}`, // Renamed
             generatedSummaryHtml: finalSummaryHtml,
-            extractedMetadata: finalMetadataJson,
+            extractedInheritancePattern: inheritancePatternData, // Renamed and simplified
             generationTimestamp: timestamp,
-            status: (summaryTextResult.status === 'fulfilled' && metadataJsonResult.status === 'fulfilled') ? 'Success' : 'Partial Failure or Failure'
+            status: (summaryTextResult.status === 'fulfilled' && inheritanceJsonResult.status === 'fulfilled') ? 'Success' : 'Partial Failure or Failure' // Adjusted status check
         };
-        const summaryBlobUrl = `${generationBaseUrl}/summary_generation_details.json`;
+        const generationDetailsBlobUrl = `${generationBaseUrl}/generation_details.json`; // Consolidated blob name
         blobPromises.push(
-            f29azureService.createBlobSimple('data', summaryBlobUrl, summaryDataToSave)
-                .then(() => console.log(`[SummaryService] Summary generation details saved to blob: ${summaryBlobUrl}`))
-                .catch(err => console.error(`[SummaryService] Failed to save summary details blob: ${summaryBlobUrl}`, err))
+            f29azureService.createBlobSimple('data', generationDetailsBlobUrl, generationDetailsToSave)
+                .then(() => console.log(`[SummaryService] Generation details saved to blob: ${generationDetailsBlobUrl} (ParamForm: ${paramForm}, User: ${userId})`))
+                .catch(err => console.error(`[SummaryService] Failed to save generation details blob: ${generationDetailsBlobUrl} (ParamForm: ${paramForm}, User: ${userId})`, err))
         );
 
-        // 7b. Save Timeline Generation Details
-        const timelineDataToSave = {
-            generationJobId: paramForm,
-            userId: userId,
-            sourceFileNames: nameFiles,
-            // contextUsed: contextInput, // Optional
-            promptUsedForTimeline: userPromptTimelineJson,
-            llmRawResponseTimeline: timelineJsonResult.status === 'fulfilled' ? JSON.stringify(timelineJsonResult.value) : `Error: ${timelineJsonResult.reason}`,
-            generatedTimelineJson: finalTimelineJson, // Store the final array (or error object)
-            generationTimestamp: timestamp,
-            status: timelineJsonResult.status === 'fulfilled' ? 'Success' : 'Failure'
-        };
-        const timelineBlobUrl = `${generationBaseUrl}/timeline_generation_details.json`;
-        blobPromises.push(
-            f29azureService.createBlobSimple('data', timelineBlobUrl, timelineDataToSave)
-                .then(() => console.log(`[SummaryService] Timeline generation details saved to blob: ${timelineBlobUrl}`))
-                .catch(err => console.error(`[SummaryService] Failed to save timeline details blob: ${timelineBlobUrl}`, err))
-        );
+        // Timeline blob saving logic removed
 
-        // Wait for blob saving (optional, depending on requirements)
-        await Promise.allSettled(blobPromises); // Use allSettled here too
-        console.log("[SummaryService] Blob saving operations attempted.");
+        // Wait for blob saving
+        await Promise.allSettled(blobPromises);
+        console.log(`[SummaryService] Blob saving operation attempted. (ParamForm: ${paramForm}, User: ${userId})`);
 
         // Step 8: Format and Send Final Response to Client
         const finalResult = {
             msg: "done", // Indicate processing finished, check results for success/failure
-            // Result 1: The simplified text report
-            result1: finalSummaryHtml,
-             // Result 2: The timeline as a JSON array (client can stringify if needed)
-            result2: finalTimelineJson,
-             // Metadata: The extracted metadata object
-            metadata: finalMetadataJson,
-            status: 200 // HTTP status is 200, but content indicates success/failure of individual parts
+            result1: finalSummaryHtml, // Result 1: The simplified text report
+            // result2 (timeline) removed
+            metadata: inheritancePatternData, // Metadata: Simplified inheritance pattern object
+            status: 200 // HTTP status is 200, individual task success indicated within payload
         };
 
         res.status(200).send(finalResult);
-        console.log(`[SummaryService] Successfully processed request for User: ${userId}, Role: ${role} (check results for individual task success)`);
+        console.log(`[SummaryService] Successfully processed request for User: ${userId}, Role: ${role}, ParamForm: ${paramForm} (check results for individual task success)`);
 
     } catch (error) {
-        // Step 9: Global Error Handling (Errors not caught during specific task processing)
-        console.error("[SummaryService] Critical Error in callSummary function:", error);
+        // Step 9: Global Error Handling
+        console.error(`[SummaryService] Critical Error in callSummary (ParamForm: ${paramForm}, User: ${userId}):`, error);
         // Log the specific error if possible
-        insights.error(error); // Log to monitoring if available
+        // insights.error(`Critical error in callSummary for ${paramForm}, User: ${userId}`, error); // Log to monitoring
 
         res.status(500).send({
             msg: "Internal Server Error",
-            error: "An unexpected error occurred during summary generation.",
-            error_details: error.message, // Provide error message for debugging
+            error: `An unexpected error occurred during summary generation. Please contact support if the issue persists. (Ref: ${paramForm})`, // More user-friendly, includes ref
+            // error_details: error.message, // Potentially remove raw message from client response for security
             status: 500
         });
     }
