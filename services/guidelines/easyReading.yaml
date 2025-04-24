@@ -8,9 +8,9 @@ CorePrinciples:
   - rule: "Use Appropriate Tone"
     desc: "Professional but simple, direct, and respectful. Avoid condescension."
   - rule: "Assume Limited Topic Knowledge"
-    desc: "Explain core concepts clearly, assuming no prior specific genetic knowledge."
+    desc: "Explain core concepts clearly, assuming no prior specific medical knowledge."
   - rule: "Prioritize Accuracy Above All"
-    desc: "Simplification should *never* lead to inaccurate or misleading information, especially with medical/genetic terms."
+    desc: "Simplification should *never* lead to inaccurate or misleading information, especially with medical terms."
 
 HandlingTerminology:
   - rule: "Prioritize Simple, Common Words (When Accurate)"
