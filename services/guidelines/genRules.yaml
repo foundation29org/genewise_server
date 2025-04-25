@@ -91,8 +91,6 @@ simplified_report_sections:
       - action: Extract_Summarize # Include high-level result from original report page 1
         source_section: Results
         data_point: summary_finding
-        details: Take the opportunity to add a brief summary of the result.
-        apply_constraint: *summarization_caution
       - action: Format
         output: Narrative text combining the above points.
 
