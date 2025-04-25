@@ -22,42 +22,37 @@ const langsmithClient = LANGSMITH_API_KEY ? new Client({
     apiKey: LANGSMITH_API_KEY,
 }) : undefined;
 
+// Model to API version mapping
+const MODEL_API_VERSIONS = {
+    "o1": OPENAI_API_VERSION_O1,
+    "gpt-4o-mini": config.OPENAI_API_VERSION,
+    "gpt-4.1": "2025-01-01-preview"
+};
+
 // --- Model Creation ---
 /**
- * Creates configured ChatOpenAI models with LangSmith tracing.
+ * Creates a configured ChatOpenAI model with LangSmith tracing.
  * @param {string} projectName - The LangSmith project name.
- * @returns {object} Object containing configured models (e.g., { llm }).
+ * @param {string} model - The model deployment name (default: "o1").
+ * @param {string} apiVersion - Optional API version override.
+ * @returns {object} Configured ChatOpenAI model.
  */
-function createModels(projectName) {
+function createModel(projectName, model = "o1", apiVersion = null) {
   const callbacks = langsmithClient ? [new LangChainTracer({ projectName, client: langsmithClient })] : undefined;
+  
+  // Use provided API version or get from mapping
+  const version = apiVersion || MODEL_API_VERSIONS[model] || OPENAI_API_VERSION_O1;
 
-  // Using 'o1' as the primary model based on the original navigator_summarize usage
   const llm = new ChatOpenAI({
       azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
-      azureOpenAIApiVersion: OPENAI_API_VERSION_O1,
+      azureOpenAIApiVersion: version,
       azureOpenAIApiInstanceName: OPENAI_API_BASE,
-      azureOpenAIApiDeploymentName: "o1", // Using the 'o1' deployment
-      // temperature: 0.1, // <--- REMOVE THIS LINE
-      timeout: 500000,
-      callbacks: callbacks,
-      // Consider adding maxTokens if needed to control output length/cost
-  });
-
-  // If you specifically need gpt-4o-mini for translation or other tasks, create it here too
-  // Also remove temperature from here just in case this deployment has the same limitation
-  const translationLlm = new ChatOpenAI({
-      azureOpenAIApiKey: AZURE_OPENAI_API_KEY,
-      azureOpenAIApiVersion: config.OPENAI_API_VERSION, // Use appropriate version for mini
-      azureOpenAIApiInstanceName: OPENAI_API_BASE,
-      azureOpenAIApiDeploymentName: "gpt-4o-mini", // Use the mini deployment
-      // temperature: 0, // <--- REMOVE THIS LINE TOO
+      azureOpenAIApiDeploymentName: model,
       timeout: 500000,
       callbacks: callbacks,
   });
 
-
-
-    return { llm, translationLlm }; // Return the primary model used for generation/extraction
+  return llm;
 }
 
 // --- Core LLM Interaction Functions ---
@@ -72,7 +67,7 @@ function createModels(projectName) {
  */
 async function generateStructuredText(userId, systemPrompt, userPrompt) {
     const projectName = `GenText - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
-    const { llm } = createModels(projectName); // Use the primary LLM
+    const llm = createModel(projectName, "gpt-4.1"); // Use gpt-4.1 for structured content
 
     const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(systemPrompt);
     const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate("{task}");
@@ -118,7 +113,7 @@ async function generateStructuredText(userId, systemPrompt, userPrompt) {
  */
 async function extractJson(userId, systemPrompt, userPrompt) {
     const projectName = `ExtractJSON - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
-    const { llm } = createModels(projectName); // Use the primary LLM
+    const llm = createModel(projectName, "gpt-4.1"); // Use gpt-4.1 for JSON extraction
 
     const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(systemPrompt);
     const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate("{task}");
@@ -181,9 +176,7 @@ async function extractJson(userId, systemPrompt, userPrompt) {
  */
 async function translateText(lang, text, userId = 'anonymous') {
     const projectName = `Translate - ${LANGSMITH_PROJECT_BASE} - ${userId}`;
-    // Use the specific translation model if defined, otherwise fallback to primary
-    const { translationLlm, llm } = createModels(projectName);
-    const modelToUse = translationLlm || llm;
+    const llm = createModel(projectName, "gpt-4o-mini"); // Use gpt-4o-mini for translation
 
     const systemMessagePrompt = SystemMessagePromptTemplate.fromTemplate(
         `You are an expert translator specializing in medical and genetic information. Your task is to translate the provided text accurately and clearly into the target language, ensuring it remains patient-friendly and avoids overly technical jargon where possible.`
@@ -206,7 +199,7 @@ Target Language: {input_language}`
 
     const chain = new LLMChain({
         prompt: chatPrompt,
-        llm: modelToUse,
+        llm: llm,
     });
 
     const chain_retry = chain.withRetry({ stopAfterAttempt: 3 });
