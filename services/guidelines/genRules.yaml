@@ -72,6 +72,8 @@ simplified_report_sections:
 
   numbering: if any section is omitted, the numbering should be adjusted accordingly.
 
+  anonimization: avoid using names or personal information in the report.
+
   # Section 1: Background
   - section_id: 1_Background
     title: "1. Contexto"
@@ -91,8 +93,10 @@ simplified_report_sections:
       - action: Extract_Summarize # Include high-level result from original report page 1
         source_section: Results
         data_point: summary_finding
+        "
+        **Añadir el placeholder '[IMG22]' al final.**
       - action: Format
-        output: Narrative text combining the above points.
+        output: Narrative text combining the above points + "[IMG22]".
 
   # Section 3: Result - Focus on meaning, not labels
   - section_id: 3_Result
@@ -154,9 +158,9 @@ simplified_report_sections:
                     Si AD: "Normalmente, basta con tener el cambio en **una** de las dos copias del gen para que la condición pueda manifestarse (herencia dominante)."
                     Si AR: "Normalmente, se necesita tener el cambio en **ambas** copias del gen para que la condición se manifieste (herencia recesiva). Tenerlo en una sola copia te convierte en 'portador'."
                     Si XL: "Este gen está en el cromosoma X, por lo que la herencia afecta de forma diferente a hombres y mujeres..."
-                    **Añadir el placeholder '[IMAGE]' al final.**
+                    **Añadir el placeholder '[IMG33]' al final.**
               - action: Format
-                  output: Narrative text + "[IMAGE]".
+                  output: Narrative text + "[IMG33]".
 
   # Section 4: Other Findings - Explain meaning directly
   - section_id: 4_Other_Findings
@@ -170,7 +174,7 @@ simplified_report_sections:
         actions:
           - ApplyConstraint: *summarization_caution
           - Generate: # Describe finding narratively - Gene, Meaning, Copies
-              template: "Se encontró un cambio en el gen **{Gene}**, presente en **{genotype_meaning}** copia(s)."
+              template: "Se encontró un cambio en el gen **{Gene}**, presente en **{genotype_meaning}** copia(s). "
               input: finding details (Gene, genotype_meaning)
           - Generate: # Explain meaning based on derived meaning and type
               input: finding details (finding_meaning, type, OriginalReportInterpretationSummary)
@@ -235,13 +239,13 @@ simplified_report_sections:
       - action: Conditional_Add_Statement
         condition: any_variant_reported == true
         statement: >
-          "'Para entender mejor si un cambio genético fue heredado o es nuevo en la familia, a veces es útil realizar estudios genéticos a los padres.'"
+          "Para entender mejor si un cambio genético fue heredado o es nuevo en la familia, a veces es útil realizar estudios genéticos a los padres."
       - action: Format
         output: Narrative text.
 
   # Section 7: Key Messages - UL/LI format, simple language
   - section_id: 7_Key_Messages
-    title: "7. Mensajes clave para recordar"
+    title: "7. Mensajes clave"
     content_generation:
       - action: Generate_Summary
         based_on_sections: [3_Result, 4_Other_Findings, 5_Secondary_Findings]
@@ -259,7 +263,7 @@ simplified_report_sections:
 
   # Section 8: Glossary - Defines concepts used, not jargon avoided
   - section_id: 8_Glossary
-    title: "8. Pequeño Glosario"
+    title: "8. Glosario"
     content_generation:
       - action: Identify_Terms # Identify concepts actually explained/used
         source: "Sections 1-7 generated text."
