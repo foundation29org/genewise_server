@@ -40,11 +40,11 @@ process_variables:
 
 intro_genes_proteins: &intro_genes_proteins
   Generate: >
-    "Los genes son como "instrucciones" que dan lugar a las proteínas. Las proteínas son moléculas necesarias para que nuestro cuerpo funcione y se desarrolle. A veces, pueden ocurrir pequeños cambios en estas instrucciones o genes que afectan cómo aprendemos, hablamos o nos desarrollamos."
+    "Los genes son como “instrucciones” que dan lugar a las proteínas. Las proteínas son moléculas necesarias para que nuestro cuerpo funcione y se desarrolle. A veces, pueden ocurrir pequeños cambios en estas instrucciones o genes que afectan cómo aprendemos, hablamos o nos desarrollamos. De cada gen, todos tenemos dos copias: una copia la heredamos de nuestra madre y otra de nuestro padre."
 
 intro_exome_study: &intro_exome_study
   Generate: >
-    "El exoma es una prueba genética que permite leer un número elevado de genes de los cuales se cuenta con cierto conocimiento de su función e implicación clínica a día de hoy. Más concretamente se leen los exones, que son las partes de los genes que contienen información. En este caso, se han leído aquellos genes que puedan estar relacionados con la clínica de la paciente."
+    "El exoma es una prueba genética que permite leer un número elevado de genes de los cuales se cuenta con cierto conocimiento de su función e implicación clínica a día de  hoy. Más concretamente se leen los exones, que son las partes de los genes que contienen información. En este caso, se han leído aquellos genes que puedan estar relacionados con la clínica de la paciente. "
 
 intro_variant_classification_meaning: &intro_variant_classification_meaning
   Generate: >
@@ -52,7 +52,7 @@ intro_variant_classification_meaning: &intro_variant_classification_meaning
     
     * Variantes benignas: existen suficientes evidencias para afirmar que no tienen ningún efecto dañino en el organismo.
     
-    * Variantes patogénicas: existen suficientes evidencias para afirmar que pueden ser las causantes de una patología. En ocasiones, es necesario que vayan acompañadas de otras alteraciones para que den lugar a una patología.
+    * Variantes patogénicas: existen suficientes evidencias para afirmar que pueden ser las causantes de una patología. En ocasiones, dependiendo del patrón de herencia, es necesario que vayan acompañadas de otras alteraciones para que se desarrolle la patología.
     
     * Variantes de significado incierto: no existen suficientes evidencias para afirmar que son las causantes de una patología, ni para afirmar que no lo son."
 
@@ -223,7 +223,7 @@ simplified_report_sections:
     title: "6. Recomendaciones y próximos pasos"
     content_generation:
       - action: Generate
-        details: "La ciencia genética avanza rápido. Es buena idea comentar estos resultados de vez en cuando con su equipo médico por si surge nueva información relevante."
+        details: "Los conocimientos genéticos y los métodos de análisis están en constante evolución, por lo que se recomienda reanalizar periódicamente los datos genéticos cada varios años.  Por lo tanto, en caso de que se considere conveniente reanalizar su información genética, el equipo médico se pondrá en contacto con usted."
       - action: Extract_Filter_Include
         source_section: Recommendations
         filter_out_keywords: ["Genetic Counseling", "contact the laboratory", "Clinical Genetics consultation"]
