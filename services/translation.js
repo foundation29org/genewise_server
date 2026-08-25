@@ -1,88 +1,80 @@
 'use strict'
 
 const config = require('../config')
-const request = require('request')
+const axios = require('axios')
 const deepl = require('deepl-node');
 const insights = require('../services/insights')
 const deeplApiKey = config.DEEPL_API_KEY;
 const langchain = require('../services/langchain')
 
-function getDetectLanguage(req, res) {
-    var jsonText = req.body;
-    var translationKey = config.translationKey;
-    request.post({ url: 'https://api.cognitive.microsofttranslator.com/detect?api-version=3.0', json: true, headers: { 'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' }, body: jsonText }, (error, response, body) => {
-      if (error) {
-        console.error(error)
-        insights.error(error);
-        res.status(500).send(error)
-      }
-      if (body == 'Missing authentication token.') {
-        res.status(401).send(body)
-      } else {
-        res.status(200).send(body)
-      }
-  
-    });
+async function microsoftTranslatorPost(url, body) {
+  const response = await axios.post(url, body, {
+    headers: {
+      'Ocp-Apim-Subscription-Key': config.translationKey,
+      'Ocp-Apim-Subscription-Region': 'northeurope',
+      'Content-Type': 'application/json'
+    }
+  });
+  return response.data;
+}
+
+function sendTranslatorError(res, error) {
+  console.error(error);
+  insights.error(error);
+  const payload = error.response?.data || error.message || error;
+  const status = error.response?.status || 500;
+  res.status(status).send(payload);
+}
+
+function sendTranslatorBody(res, body) {
+  if (body == 'Missing authentication token.') {
+    res.status(401).send(body);
+  } else {
+    res.status(200).send(body);
   }
-
-
-
-function getTranslationDictionary (req, res){
-  var lang = req.body.lang;
-  var info = req.body.info;
-  var translationKey = config.translationKey;
-  request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+lang+'&to=en',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:info}, (error, response, body) => {
-    if (error) {
-      console.error(error)
-      insights.error(error);
-      res.status(500).send(error)
-    }
-    if(body=='Missing authentication token.'){
-      res.status(401).send(body)
-    }else{
-      res.status(200).send(body)
-    }
-
-  });
 }
 
-function getTranslationDictionary2 (text, source_lang){
-  return new Promise(async function (resolve, reject) { 
-   var lang = source_lang;
-  var info = text;
-  var translationKey = config.translationKey;
-  request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+lang+'&to=en',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:info}, (error, response, body) => {
-    if (error) {
-      console.error(error)
-      insights.error(error);
-      reject(error)
-    }
-    if(body=='Missing authentication token.'){
-      resolve(body)
-    }else{
-      resolve(body)
-    }
-  });
-});
+async function getDetectLanguage(req, res) {
+  try {
+    const body = await microsoftTranslatorPost(
+      'https://api.cognitive.microsofttranslator.com/detect?api-version=3.0',
+      req.body
+    );
+    sendTranslatorBody(res, body);
+  } catch (error) {
+    sendTranslatorError(res, error);
+  }
 }
 
-function getTranslationDictionaryInvert (req, res){
-  var lang = req.body.lang;
-  var info = req.body.info;
-  var translationKey = config.translationKey;
-  request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+lang,json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:info}, (error, response, body) => {
-    if (error) {
-      console.error(error)
-      insights.error(error);
-      res.status(500).send(error)
-    }
-    if(body=='Missing authentication token.'){
-      res.status(401).send(body)
-    }else{
-      res.status(200).send(body)
-    }
+async function getTranslationDictionary (req, res){
+  try {
+    const body = await microsoftTranslatorPost(
+      'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+req.body.lang+'&to=en',
+      req.body.info
+    );
+    sendTranslatorBody(res, body);
+  } catch (error) {
+    sendTranslatorError(res, error);
+  }
+}
 
-  });
+async function getTranslationDictionary2 (text, source_lang){
+  return microsoftTranslatorPost(
+    'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+source_lang+'&to=en',
+    text
+  );
+}
+
+async function getTranslationDictionaryInvert (req, res){
+  try {
+    const body = await microsoftTranslatorPost(
+      'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+req.body.lang,
+      req.body.info
+    );
+    sendTranslatorBody(res, body);
+  } catch (error) {
+    sendTranslatorError(res, error);
+  }
 }
 
 async function getdeeplTranslationDictionaryInvert (req, res){
@@ -128,47 +120,29 @@ async function getTranslationDictionaryInvert2 (req, res){
   }
 }
 
-function getTranslationDictionaryInvertMicrosoft2 (text, source_lang){
-  return new Promise(async function (resolve, reject) {
-  var lang = source_lang;
-  var info = text;
-  var translationKey = config.translationKey;
-  request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+lang,json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:info}, (error, response, body) => {
-    if (error) {
-      console.error(error)
-      insights.error(error);
-      reject(error)
-    }
-    if(body=='Missing authentication token.'){
-      resolve(body)
-    }else{
-      resolve(body)
-    }
-
-  });
-});
+async function getTranslationDictionaryInvertMicrosoft2 (text, source_lang){
+  return microsoftTranslatorPost(
+    'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from=en&to='+source_lang,
+    text
+  );
 }
 
-function getTranslationSegments(req, res){
-  var originlang = req.body.originlang;
-    var lang = req.body.lang;
-    var segments = req.body.segments;
-    var translationKey = config.translationKey;
-    request.post({url:'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+originlang+'&to='+lang+'&textType=html',json: true,headers: {'Ocp-Apim-Subscription-Key': translationKey, 'Ocp-Apim-Subscription-Region': 'northeurope' },body:segments}, (error, response, body) => {
-      if (error) {
-        console.error(error)
-        insights.error(error);
-        res.status(500).send(error)
-      }
-      if(body=='Missing authentication token.'){
-        insights.error(body);
-        res.status(401).send(body)
-      }else{
-        res.status(200).send(body)
-      }
-  
-    });
+async function getTranslationSegments(req, res){
+  try {
+    const body = await microsoftTranslatorPost(
+      'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&&from='+req.body.originlang+'&to='+req.body.lang+'&textType=html',
+      req.body.segments
+    );
+    if (body == 'Missing authentication token.') {
+      insights.error(body);
+      res.status(401).send(body);
+    } else {
+      res.status(200).send(body);
+    }
+  } catch (error) {
+    sendTranslatorError(res, error);
   }
+}
 
 
   const langDict = {
@@ -314,11 +288,13 @@ async function deepLtranslate2(text, target) {
 }
 
 async function getTranslationIA(req, res){
-  var lang = req.body.lang;
-  var text = req.body.text;
-
-  var result = await langchain.translateSummary(lang, text);
-	res.status(200).send(result);
+  try {
+    var result = await langchain.translateText(req.body.lang, req.body.text);
+    res.status(200).send(result);
+  } catch (error) {
+    insights.error(error);
+    res.status(500).send({ error: error.message || error });
+  }
 }
 
 module.exports = {

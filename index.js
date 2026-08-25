@@ -19,10 +19,7 @@ if(config.client_server!='http://localhost:4200'){
     .setDistributedTracingMode(appInsights.DistributedTracingModes.AI)
     .start();
 }
-const mongoose = require('mongoose');
 const app = require('./app')
-
-mongoose.Promise = global.Promise
 
 const server = app.listen(config.port, () => {
 	console.log(`API REST corriendo en http://localhost:${config.port}`)

@@ -11,11 +11,6 @@ const blobServiceClientGenomics = new storage.BlobServiceClient(
   sharedKeyCredentialGenomics
 );
 
-var azure = require('azure-storage');
-
-var blobService = azure
-  .createBlobService(accountname, key);
-
 async function deleteContainer(containerName) {
   const containerClient = await blobServiceClientGenomics.getContainerClient(containerName);
   containerClient.delete();
@@ -69,21 +64,21 @@ async function createBlob(containerName, url, data) {
 }
 
 async function createBlobSimple(containerName, url, data) {
-  return new Promise((resolve, reject) => {
-    blobService.createBlockBlobFromText(
-      containerName, 
-      url,
-      JSON.stringify(data),
-      function onResponse(error, result) {
-        if(error){
-          insights.error(error);
-          console.log(error);
-          resolve(false)
-        }
-          resolve(true);
-      });
-  });
-  
+  try {
+    const containerClient = blobServiceClientGenomics.getContainerClient(containerName);
+    const haveContainer = await containerClient.exists();
+    if (!haveContainer) {
+      await createContainers(containerName);
+    }
+    const content = JSON.stringify(data);
+    const blockBlobClient = containerClient.getBlockBlobClient(url);
+    await blockBlobClient.upload(content, Buffer.byteLength(content));
+    return true;
+  } catch (error) {
+    insights.error(error);
+    console.log(error);
+    return false;
+  }
 }
 
 
@@ -117,15 +112,14 @@ async function deleteBlobsInFolder(containerName, blobName) {
 }
 
 async function deleteBlob(containerName, blobName) {
-  return new Promise((resolve, reject) => {
-    blobService.deleteBlobIfExists(containerName,blobName,function(error){
-      if (error != null) {
-        resolve(false)
-      } else {
-        resolve(true)
-      }
-    })
-  });
+  try {
+    const containerClient = blobServiceClientGenomics.getContainerClient(containerName);
+    const blobClient = containerClient.getBlobClient(blobName);
+    await blobClient.deleteIfExists();
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 async function downloadBlob(containerName, blobName) {
