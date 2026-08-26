@@ -5,7 +5,6 @@
 
 const express = require('express')
 const compression = require('compression');
-const bodyParser = require('body-parser');
 const fileUpload = require('express-fileupload');
 const app = express()
 app.use(compression());
@@ -41,8 +40,8 @@ function setCrossDomain(req, res, next) {
   }
 }
 
-app.use(bodyParser.urlencoded({limit: '50mb', extended: false}))
-app.use(bodyParser.json({limit: '50mb'}))
+app.use(express.urlencoded({limit: '50mb', extended: false}))
+app.use(express.json({limit: '50mb'}))
 app.use(setCrossDomain);
 app.use(fileUpload());
 

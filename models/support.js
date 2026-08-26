@@ -6,7 +6,7 @@ const Schema = mongoose.Schema
 
 const { conndbaccounts } = require('../db_connect')
 
-const SupportSchema = Schema({
+const SupportSchema = new Schema({
 	subject: String,
 	description: String,
 	type: String,
