@@ -50,20 +50,21 @@ const Lang = require('../../models/lang')
  *   }
  * ]
  */
-function getLangs (req, res){
-	Lang.find({}, function(err, langs) {
-    var listLangs = [];
-
-		if(langs!=undefined){
+async function getLangs (req, res){
+	try {
+		const langs = await Lang.find({}).exec();
+		const listLangs = [];
+		if (langs) {
 			langs.forEach(function(lang) {
 				if(lang.code!='nl'){
 					listLangs.push({name:lang.name, code: lang.code});
 				}
-
-	    });
+			});
 		}
-    res.status(200).send(listLangs)
-  });
+		res.status(200).send(listLangs)
+	} catch (err) {
+		res.status(500).send({ error: err.message || err })
+	}
 }
 
 module.exports = {

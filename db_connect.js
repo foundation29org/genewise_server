@@ -3,7 +3,9 @@
 const mongoose = require ('mongoose')
 const config = require('./config')
 
-const conndbaccounts = mongoose.createConnection(config.dbaccounts, { useMongoClient: true })
+mongoose.set('strictQuery', false)
+
+const conndbaccounts = mongoose.createConnection(config.dbaccounts)
 
 module.exports = {
 	conndbaccounts
