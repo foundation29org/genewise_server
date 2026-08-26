@@ -290,7 +290,7 @@ async function deepLtranslate2(text, target) {
 async function getTranslationIA(req, res){
   try {
     var result = await langchain.translateText(req.body.lang, req.body.text);
-    res.status(200).send(result);
+    res.status(200).json({ text: result });
   } catch (error) {
     insights.error(error);
     res.status(500).send({ error: error.message || error });

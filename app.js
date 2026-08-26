@@ -11,6 +11,7 @@ app.use(compression());
 const serviceEmail = require('./services/email')
 const api = require ('./routes')
 const path = require('path')
+const fs = require('fs')
 const config= require('./config')
 
 const allowedOrigins = config.allowedOrigins;
@@ -58,8 +59,12 @@ app.use('/apidoc',express.static('apidoc', {'index': ['index.html']}))
 //ruta angular, poner carpeta dist publica
 app.use(express.static(path.join(__dirname, 'dist')));
 // Send all other requests to the Angular app
-app.get('*', function (req, res, next) {
-    res.sendFile('dist/index.html', { root: __dirname });
+app.get('*', function (req, res) {
+    const indexHtml = path.join(__dirname, 'dist', 'index.html');
+    if (!fs.existsSync(indexHtml)) {
+        return res.status(404).send({ error: 'Client build not found' });
+    }
+    res.sendFile(indexHtml);
  });
 
 module.exports = app

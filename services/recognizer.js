@@ -40,8 +40,8 @@ async function form_recognizer(userId, documentId, containerName, url) {
 
             // Configuration for the Form Recognizer API call
             const modelId = "prebuilt-layout"; // Using the prebuilt layout model
-            const apiVersion = "2023-10-31-preview"; // Use a specific, tested API version
-            const analyzeUrl = `${FORM_RECOGNIZER_ENDPOINT}/documentintelligence/documentModels/${modelId}:analyze?_overload=analyzeDocument&api-version=${apiVersion}&outputContentFormat=markdown`; // Request markdown output
+            const apiVersion = "2024-11-30";
+            const analyzeUrl = `${FORM_RECOGNIZER_ENDPOINT}/documentintelligence/documentModels/${modelId}:analyze?_overload=analyzeDocument&api-version=${apiVersion}&outputContentFormat=markdown`;
 
             const headers = {
                 'Ocp-Apim-Subscription-Key': FORM_RECOGNIZER_KEY,
@@ -131,11 +131,12 @@ async function form_recognizer(userId, documentId, containerName, url) {
             }
 
         } catch (error) {
+            const azureError = error.response?.data?.error?.message || error.response?.data?.error || error.message;
             console.error("[FormRecognizer] Error in form_recognizer function:", error.response ? error.response.data : error.message);
             reject({
                 msg: "Form Recognizer Error",
-                error: error.message || "Unknown error during form recognition",
-                details: error.response ? JSON.stringify(error.response.data) : null, // Stringify details
+                error: azureError || "Unknown error during form recognition",
+                details: error.response ? JSON.stringify(error.response.data) : null,
                 status: error.response ? error.response.status : 500
             });
         }
