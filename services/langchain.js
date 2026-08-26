@@ -132,7 +132,7 @@ async function translateText(lang, text, userId = 'anonymous') {
     );
 
     const humanMessagePrompt = HumanMessagePromptTemplate.fromTemplate(
-        `Translate the following text into **{input_language}**. Return ONLY the translated text, without any explanations, introductions, or formatting like HTML tags unless they were part of the original text.
+        `Translate the following text into **{input_language}**. Return ONLY the translated text, without any explanations or introductions. Keep HTML tags that were in the original text. Keep placeholders such as [[[GWIMG0]]] exactly as they appear; do not translate, drop, or reformat them.
 
 Text to Translate:
 \`\`\`
